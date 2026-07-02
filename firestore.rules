@@ -61,14 +61,14 @@ service cloud.firestore {
       allow create: if isSignedIn() && 
                     userId == request.auth.uid && 
                     isValidId(userId) &&
-                    incoming().keys().hasAll(['email', 'phone', 'name', 'status', 'role', 'createdAt']) &&
-                    incoming().keys().size() == 7 && // email, phone, name, status, role, createdAt, photoURL
+                    incoming().keys().hasAll(['uid', 'email', 'phone', 'name', 'status', 'role', 'createdAt']) &&
+                    incoming().keys().size() == 8 && // uid, email, phone, name, status, role, createdAt, photoURL
                     incoming().email is string &&
                     incoming().phone is string &&
                     incoming().name is string &&
                     incoming().name.size() > 0 &&
                     incoming().name.size() <= 100 &&
-                    incoming().status == "pending" &&
+                    (incoming().status == "pending" || incoming().status == "approved") &&
                     incoming().role == "user" &&
                     incoming().createdAt == request.time;
 

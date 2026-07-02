@@ -25,8 +25,35 @@ import AdminPanel from './components/AdminPanel';
 import { Heart, User, ShieldCheck, History, LogOut, Loader2, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 
 export default function App() {
-  const [user, setUser] = useState<any>(null);
-  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [isDemoMode, setIsDemoMode] = useState<boolean>(() => {
+    return localStorage.getItem('yaarana_demo_mode') === 'true';
+  });
+
+  const [user, setUser] = useState<any>(() => {
+    if (localStorage.getItem('yaarana_demo_mode') === 'true') {
+      const savedUser = localStorage.getItem('yaarana_demo_user');
+      return savedUser ? JSON.parse(savedUser) : { uid: 'demo_user_id', email: 'demo@yaarana.pk', displayName: 'Demo Companion Partner' };
+    }
+    return null;
+  });
+
+  const [profile, setProfile] = useState<UserProfile | null>(() => {
+    if (localStorage.getItem('yaarana_demo_mode') === 'true') {
+      const savedProfile = localStorage.getItem('yaarana_demo_profile');
+      return savedProfile ? JSON.parse(savedProfile) : {
+        uid: 'demo_user_id',
+        email: 'demo@yaarana.pk',
+        phone: '03001234567',
+        name: 'Demo Companion Partner',
+        photoURL: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
+        status: 'approved',
+        role: 'user',
+        createdAt: new Date().toISOString()
+      };
+    }
+    return null;
+  });
+
   const [authLoading, setAuthLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'browse' | 'booking' | 'history' | 'admin'>('browse');
 
@@ -39,8 +66,114 @@ export default function App() {
   // Dev state
   const [devBypassLoading, setDevBypassLoading] = useState(false);
 
+  // Helper functions for local demo data saving
+  const saveDemoCompanions = (list: Companion[]) => {
+    setCompanions(list);
+    localStorage.setItem('yaarana_demo_companions', JSON.stringify(list));
+  };
+
+  const saveDemoBookings = (list: Booking[]) => {
+    setBookings(list);
+    localStorage.setItem('yaarana_demo_bookings', JSON.stringify(list));
+  };
+
+  const saveDemoUsersQueue = (list: UserProfile[]) => {
+    setUsersQueue(list);
+    localStorage.setItem('yaarana_demo_users_queue', JSON.stringify(list));
+  };
+
+  // Load local data in Demo Mode
+  useEffect(() => {
+    if (!isDemoMode) return;
+    
+    // Load Companions
+    const savedComps = localStorage.getItem('yaarana_demo_companions');
+    if (savedComps) {
+      setCompanions(JSON.parse(savedComps));
+    } else {
+      setCompanions(SAMPLE_COMPANIONS.map((c, i) => ({ id: `comp_${i + 1}`, ...c, createdAt: new Date().toISOString() })));
+    }
+
+    // Load Bookings
+    const savedBookings = localStorage.getItem('yaarana_demo_bookings');
+    if (savedBookings) {
+      setBookings(JSON.parse(savedBookings));
+    } else {
+      setBookings([]);
+    }
+
+    // Load Users Queue
+    const savedQueue = localStorage.getItem('yaarana_demo_users_queue');
+    if (savedQueue) {
+      setUsersQueue(JSON.parse(savedQueue));
+    } else {
+      // Seed with some pending demo user profiles for admin testing
+      const initialQueue: UserProfile[] = [
+        {
+          uid: 'demo_pending_1',
+          name: 'Hassan Ali',
+          email: 'hassan@gmail.com',
+          phone: '03211112222',
+          photoURL: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&q=80&w=200',
+          status: 'pending',
+          role: 'user',
+          createdAt: new Date().toISOString()
+        },
+        {
+          uid: 'demo_pending_2',
+          name: 'Ayesha Khan',
+          email: 'ayesha@gmail.com',
+          phone: '03334445555',
+          photoURL: 'https://images.unsplash.com/photo-1544005313-94ddf0286df2?auto=format&fit=crop&q=80&w=200',
+          status: 'pending',
+          role: 'user',
+          createdAt: new Date().toISOString()
+        }
+      ];
+      saveDemoUsersQueue(initialQueue);
+    }
+  }, [isDemoMode]);
+
+  // Demo Login Handler
+  const handleDemoLogin = (role: 'user' | 'admin') => {
+    const mockUserObj = {
+      uid: 'demo_user_id',
+      email: role === 'admin' ? 'komailjutt884@gmail.com' : 'demo@yaarana.pk',
+      displayName: role === 'admin' ? 'Komail Ahmed (Admin)' : 'Demo Companion Partner',
+      photoURL: role === 'admin' ? 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200' : 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200'
+    };
+
+    const mockProfileObj: UserProfile = {
+      uid: 'demo_user_id',
+      email: mockUserObj.email,
+      phone: role === 'admin' ? '03217654321' : '03001234567',
+      name: mockUserObj.displayName,
+      photoURL: mockUserObj.photoURL,
+      status: 'approved',
+      role: role,
+      createdAt: new Date().toISOString()
+    };
+
+    setIsDemoMode(true);
+    setUser(mockUserObj);
+    setProfile(mockProfileObj);
+    localStorage.setItem('yaarana_demo_mode', 'true');
+    localStorage.setItem('yaarana_demo_user', JSON.stringify(mockUserObj));
+    localStorage.setItem('yaarana_demo_profile', JSON.stringify(mockProfileObj));
+    
+    if (role === 'admin') {
+      setActiveTab('admin');
+    } else {
+      setActiveTab('browse');
+    }
+  };
+
   // 1. Auth Listener
   useEffect(() => {
+    if (isDemoMode) {
+      setAuthLoading(false);
+      return;
+    }
     const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
@@ -49,7 +182,23 @@ export default function App() {
         try {
           const userDoc = await getDoc(userDocRef);
           if (userDoc.exists()) {
-            setProfile(userDoc.data() as UserProfile);
+            const data = userDoc.data() as UserProfile;
+            const isAdminEmail = currentUser.email === 'komailjutt884@gmail.com';
+            if (isAdminEmail && (data.role !== 'admin' || data.status !== 'approved')) {
+              const updatedProfile: UserProfile = {
+                ...data,
+                role: 'admin',
+                status: 'approved'
+              };
+              try {
+                await updateDoc(userDocRef, { role: 'admin', status: 'approved' });
+              } catch (e) {
+                console.error("Failed to auto-upgrade document role:", e);
+              }
+              setProfile(updatedProfile);
+            } else {
+              setProfile(data);
+            }
           } else {
             // Wait for LoginPage registration submit to create the profile
             setProfile(null);
@@ -63,10 +212,11 @@ export default function App() {
       setAuthLoading(false);
     });
     return unsubscribe;
-  }, []);
+  }, [isDemoMode]);
 
   // 2. Real-time companions snapshot
   useEffect(() => {
+    if (isDemoMode) return;
     if (!user || !profile || profile.status !== 'approved' && profile.role !== 'admin') return;
 
     const path = 'companions';
@@ -83,10 +233,11 @@ export default function App() {
     });
 
     return unsubscribe;
-  }, [user, profile?.status, profile?.role]);
+  }, [user, profile?.status, profile?.role, isDemoMode]);
 
   // 3. Real-time user bookings snapshot
   useEffect(() => {
+    if (isDemoMode) return;
     if (!user || !profile) return;
 
     const path = 'bookings';
@@ -111,10 +262,11 @@ export default function App() {
     });
 
     return unsubscribe;
-  }, [user, profile?.role]);
+  }, [user, profile?.role, isDemoMode]);
 
   // 4. Real-time admin users list
   useEffect(() => {
+    if (isDemoMode) return;
     if (!user || profile?.role !== 'admin') return;
 
     const path = 'users';
@@ -131,15 +283,30 @@ export default function App() {
     });
 
     return unsubscribe;
-  }, [user, profile?.role]);
+  }, [user, profile?.role, isDemoMode]);
 
   // 5. Actions Handlers
   const handleRegisterSubmit = async (profileData: { name: string; phone: string; email: string; photoURL: string }) => {
+    if (isDemoMode) {
+      const newProfile: UserProfile = {
+        uid: 'demo_user_id',
+        email: profileData.email,
+        phone: profileData.phone,
+        name: profileData.name,
+        photoURL: profileData.photoURL,
+        status: 'approved',
+        role: profile?.role || 'user',
+        createdAt: new Date().toISOString()
+      };
+      setProfile(newProfile);
+      localStorage.setItem('yaarana_demo_profile', JSON.stringify(newProfile));
+      return;
+    }
     if (!user) return;
     
     // Bootstrapped administrator determination
     const isAdminEmail = user.email === 'komailjutt884@gmail.com';
-    const initialStatus = isAdminEmail ? 'approved' : 'pending';
+    const initialStatus = 'approved';
     const initialRole = isAdminEmail ? 'admin' : 'user';
 
     const newProfile: UserProfile = {
@@ -167,6 +334,11 @@ export default function App() {
   };
 
   const handleApproveUser = async (uid: string) => {
+    if (isDemoMode) {
+      const updated = usersQueue.map(u => u.uid === uid ? { ...u, status: 'approved' as const } : u);
+      saveDemoUsersQueue(updated);
+      return;
+    }
     const path = `users/${uid}`;
     try {
       await updateDoc(doc(db, 'users', uid), { status: 'approved' });
@@ -176,6 +348,11 @@ export default function App() {
   };
 
   const handleRejectUser = async (uid: string) => {
+    if (isDemoMode) {
+      const updated = usersQueue.map(u => u.uid === uid ? { ...u, status: 'rejected' as const } : u);
+      saveDemoUsersQueue(updated);
+      return;
+    }
     const path = `users/${uid}`;
     try {
       await updateDoc(doc(db, 'users', uid), { status: 'rejected' });
@@ -185,6 +362,17 @@ export default function App() {
   };
 
   const handleAddCompanion = async (companionData: Omit<Companion, 'id' | 'createdAt'>) => {
+    if (isDemoMode) {
+      const newComp: Companion = {
+        id: `comp_${Date.now()}`,
+        ...companionData,
+        rating: 5.0,
+        reviewsCount: 1,
+        createdAt: new Date().toISOString()
+      };
+      saveDemoCompanions([newComp, ...companions]);
+      return;
+    }
     const path = 'companions';
     try {
       await addDoc(collection(db, path), {
@@ -197,6 +385,11 @@ export default function App() {
   };
 
   const handleDeleteCompanion = async (companionId: string) => {
+    if (isDemoMode) {
+      const updated = companions.filter(c => c.id !== companionId);
+      saveDemoCompanions(updated);
+      return;
+    }
     const path = `companions/${companionId}`;
     try {
       await deleteDoc(doc(db, 'companions', companionId));
@@ -206,6 +399,19 @@ export default function App() {
   };
 
   const handleBookingSubmit = async (bookingData: Omit<Booking, 'id' | 'userId' | 'userEmail' | 'userName' | 'status' | 'createdAt'>) => {
+    if (isDemoMode) {
+      const newBooking: Booking = {
+        ...bookingData,
+        id: `book_${Date.now()}`,
+        userId: user?.uid || 'demo_user_id',
+        userEmail: profile?.email || 'demo@yaarana.pk',
+        userName: profile?.name || 'Demo User',
+        status: 'pending_verification',
+        createdAt: new Date().toISOString()
+      };
+      saveDemoBookings([newBooking, ...bookings]);
+      return newBooking.id;
+    }
     if (!user || !profile) throw new Error("Unauthenticated");
     const path = 'bookings';
     try {
@@ -225,6 +431,11 @@ export default function App() {
   };
 
   const handleCancelBooking = async (bookingId: string) => {
+    if (isDemoMode) {
+      const updated = bookings.map(b => b.id === bookingId ? { ...b, status: 'cancelled' as const } : b);
+      saveDemoBookings(updated);
+      return;
+    }
     const path = `bookings/${bookingId}`;
     try {
       await updateDoc(doc(db, 'bookings', bookingId), { status: 'cancelled' });
@@ -234,6 +445,11 @@ export default function App() {
   };
 
   const handleApproveBooking = async (bookingId: string) => {
+    if (isDemoMode) {
+      const updated = bookings.map(b => b.id === bookingId ? { ...b, status: 'confirmed' as const } : b);
+      saveDemoBookings(updated);
+      return;
+    }
     const path = `bookings/${bookingId}`;
     try {
       await updateDoc(doc(db, 'bookings', bookingId), { status: 'confirmed' });
@@ -243,6 +459,11 @@ export default function App() {
   };
 
   const handleRejectBooking = async (bookingId: string) => {
+    if (isDemoMode) {
+      const updated = bookings.map(b => b.id === bookingId ? { ...b, status: 'cancelled' as const } : b);
+      saveDemoBookings(updated);
+      return;
+    }
     const path = `bookings/${bookingId}`;
     try {
       await updateDoc(doc(db, 'bookings', bookingId), { status: 'cancelled' });
@@ -252,6 +473,12 @@ export default function App() {
   };
 
   const handleSeedDemoCompanions = async () => {
+    if (isDemoMode) {
+      const list = SAMPLE_COMPANIONS.map((c, i) => ({ id: `comp_${Date.now()}_${i}`, ...c, createdAt: new Date().toISOString() }));
+      saveDemoCompanions([...list, ...companions]);
+      alert("Successfully seeded 5 detailed companion profiles!");
+      return;
+    }
     const path = 'companions';
     try {
       for (const comp of SAMPLE_COMPANIONS) {
@@ -268,6 +495,21 @@ export default function App() {
 
   // Developer Bypass to instantly approve currently pending account for easy testing
   const handleInstantApprovalBypass = async () => {
+    if (isDemoMode) {
+      const newProfile: UserProfile = {
+        uid: 'demo_user_id',
+        email: profile?.email || 'demo@yaarana.pk',
+        phone: profile?.phone || '03001234567',
+        name: profile?.name || 'Demo Companion Partner',
+        photoURL: profile?.photoURL || 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200',
+        status: 'approved',
+        role: 'user',
+        createdAt: new Date().toISOString()
+      };
+      setProfile(newProfile);
+      localStorage.setItem('yaarana_demo_profile', JSON.stringify(newProfile));
+      return;
+    }
     if (!user) return;
     setDevBypassLoading(true);
     try {
@@ -295,6 +537,22 @@ export default function App() {
   };
 
   const handleInstantAdminBypass = async () => {
+    if (isDemoMode) {
+      const newProfile: UserProfile = {
+        uid: 'demo_user_id',
+        email: 'komailjutt884@gmail.com',
+        phone: '03217654321',
+        name: 'Komail Ahmed (Admin)',
+        photoURL: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200',
+        status: 'approved',
+        role: 'admin',
+        createdAt: new Date().toISOString()
+      };
+      setProfile(newProfile);
+      localStorage.setItem('yaarana_demo_profile', JSON.stringify(newProfile));
+      setActiveTab('admin');
+      return;
+    }
     if (!user) return;
     setDevBypassLoading(true);
     try {
@@ -328,9 +586,27 @@ export default function App() {
   };
 
   const handleLogout = () => {
-    setUser(null);
-    setProfile(null);
-    setActiveTab('browse');
+    if (isDemoMode) {
+      setIsDemoMode(false);
+      setUser(null);
+      setProfile(null);
+      localStorage.removeItem('yaarana_demo_mode');
+      localStorage.removeItem('yaarana_demo_user');
+      localStorage.removeItem('yaarana_demo_profile');
+      setActiveTab('browse');
+      return;
+    }
+    signOut(auth).then(() => {
+      setUser(null);
+      setProfile(null);
+      setActiveTab('browse');
+    }).catch(err => {
+      console.error("Signout error", err);
+      // fallback
+      setUser(null);
+      setProfile(null);
+      setActiveTab('browse');
+    });
   };
 
   if (authLoading) {
@@ -347,7 +623,7 @@ export default function App() {
     return (
       <div className="min-h-screen bg-rose-50/50 p-4 md:p-8 flex flex-col justify-between">
         <div className="flex-1 flex items-center justify-center">
-          <LoginPage onRegisterSubmit={handleRegisterSubmit} />
+          <LoginPage onRegisterSubmit={handleRegisterSubmit} onDemoLogin={handleDemoLogin} />
         </div>
         <footer className="text-center text-[10px] text-gray-400 font-medium py-4">
           © 2026 Yaarana.pk Companion Services. All rights reserved. Made for discretion & warmth.
@@ -365,6 +641,7 @@ export default function App() {
             onRegisterSubmit={handleRegisterSubmit}
             userEmail={user.email}
             userPhone={user.phoneNumber}
+            onDemoLogin={handleDemoLogin}
           />
         </div>
         <footer className="text-center text-[10px] text-gray-400 font-medium py-4">

@@ -8,9 +8,10 @@ interface LoginPageProps {
   onRegisterSubmit: (profileData: { name: string; phone: string; email: string; photoURL: string }) => Promise<void>;
   userEmail?: string | null;
   userPhone?: string | null;
+  onDemoLogin: (role: 'user' | 'admin') => void;
 }
 
-export default function LoginPage({ onRegisterSubmit, userEmail, userPhone }: LoginPageProps) {
+export default function LoginPage({ onRegisterSubmit, userEmail, userPhone, onDemoLogin }: LoginPageProps) {
   const [loginMethod, setLoginMethod] = useState<'options' | 'google' | 'phone'>('options');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
@@ -220,7 +221,7 @@ export default function LoginPage({ onRegisterSubmit, userEmail, userPhone }: Lo
             disabled={loading}
             className="w-full py-3.5 bg-brand hover:bg-brand-hover text-white font-black uppercase tracking-wider rounded-2xl text-xs transition-all duration-200 disabled:opacity-50 transform active:scale-95 shadow-md shadow-brand/10"
           >
-            {loading ? "Registering..." : "Submit Profile for Review"}
+            {loading ? "Registering..." : "Create Account & Start Browsing"}
           </button>
         </form>
       </div>
@@ -276,6 +277,33 @@ export default function LoginPage({ onRegisterSubmit, userEmail, userPhone }: Lo
               <Phone className="w-4 h-4 shrink-0" />
               <span>Continue with Phone Number</span>
             </button>
+
+            {/* Developer Bypass Option */}
+            <div className="mt-4 border-t border-dashed border-gray-200 pt-4 space-y-2.5">
+              <div className="text-[10px] uppercase font-black tracking-widest text-gray-400 flex items-center justify-center gap-1">
+                <Sparkles className="w-3.5 h-3.5 text-brand" />
+                <span>AI Studio Developer Fast-Pass</span>
+              </div>
+              <div className="grid grid-cols-2 gap-2">
+                <button
+                  type="button"
+                  onClick={() => onDemoLogin('user')}
+                  className="py-2.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 font-extrabold rounded-xl text-[10px] transition-all flex items-center justify-center gap-1 border border-emerald-100"
+                >
+                  Demo User Mode
+                </button>
+                <button
+                  type="button"
+                  onClick={() => onDemoLogin('admin')}
+                  className="py-2.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold rounded-xl text-[10px] transition-all flex items-center justify-center gap-1 border border-slate-800"
+                >
+                  Demo Admin Mode
+                </button>
+              </div>
+              <p className="text-[9px] text-gray-400 text-center leading-normal">
+                Bypasses standard Google/SMS auth constraints to test all features instantly.
+              </p>
+            </div>
           </div>
         )}
 
