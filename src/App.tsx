@@ -1,0 +1,592 @@
+import React, { useEffect, useState } from 'react';
+import { auth, db, handleFirestoreError, OperationType } from './firebase';
+import { onAuthStateChanged, signOut, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
+import {
+  doc,
+  getDoc,
+  setDoc,
+  updateDoc,
+  deleteDoc,
+  addDoc,
+  collection,
+  onSnapshot,
+  query,
+  where,
+  orderBy,
+  serverTimestamp
+} from 'firebase/firestore';
+import { SAMPLE_COMPANIONS } from './data/sampleCompanions';
+import { UserProfile, Companion, Booking } from './types';
+import LoginPage from './components/LoginPage';
+import BrowseCompanions from './components/BrowseCompanions';
+import BookingPage from './components/BookingPage';
+import MyAccount from './components/MyAccount';
+import AdminPanel from './components/AdminPanel';
+import { Heart, User, ShieldCheck, History, LogOut, Loader2, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
+
+export default function App() {
+  const [user, setUser] = useState<any>(null);
+  const [profile, setProfile] = useState<UserProfile | null>(null);
+  const [authLoading, setAuthLoading] = useState(true);
+  const [activeTab, setActiveTab] = useState<'browse' | 'booking' | 'history' | 'admin'>('browse');
+
+  // Firestore Data State
+  const [companions, setCompanions] = useState<Companion[]>([]);
+  const [bookings, setBookings] = useState<Booking[]>([]);
+  const [usersQueue, setUsersQueue] = useState<UserProfile[]>([]);
+  const [selectedCompanion, setSelectedCompanion] = useState<Companion | null>(null);
+
+  // Dev state
+  const [devBypassLoading, setDevBypassLoading] = useState(false);
+
+  // 1. Auth Listener
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+      setUser(currentUser);
+      if (currentUser) {
+        // Fetch or create profile
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        try {
+          const userDoc = await getDoc(userDocRef);
+          if (userDoc.exists()) {
+            setProfile(userDoc.data() as UserProfile);
+          } else {
+            // Wait for LoginPage registration submit to create the profile
+            setProfile(null);
+          }
+        } catch (err) {
+          console.error("Error reading profile:", err);
+        }
+      } else {
+        setProfile(null);
+      }
+      setAuthLoading(false);
+    });
+    return unsubscribe;
+  }, []);
+
+  // 2. Real-time companions snapshot
+  useEffect(() => {
+    if (!user || !profile || profile.status !== 'approved' && profile.role !== 'admin') return;
+
+    const path = 'companions';
+    const q = query(collection(db, path), orderBy('createdAt', 'desc'));
+    
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: Companion[] = [];
+      snapshot.forEach((d) => {
+        list.push({ id: d.id, ...d.data() } as Companion);
+      });
+      setCompanions(list);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, path);
+    });
+
+    return unsubscribe;
+  }, [user, profile?.status, profile?.role]);
+
+  // 3. Real-time user bookings snapshot
+  useEffect(() => {
+    if (!user || !profile) return;
+
+    const path = 'bookings';
+    let q;
+
+    if (profile.role === 'admin') {
+      // Admins see all bookings
+      q = query(collection(db, path), orderBy('createdAt', 'desc'));
+    } else {
+      // Users see only their own bookings
+      q = query(collection(db, path), where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
+    }
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: Booking[] = [];
+      snapshot.forEach((d) => {
+        list.push({ id: d.id, ...d.data() } as Booking);
+      });
+      setBookings(list);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, path);
+    });
+
+    return unsubscribe;
+  }, [user, profile?.role]);
+
+  // 4. Real-time admin users list
+  useEffect(() => {
+    if (!user || profile?.role !== 'admin') return;
+
+    const path = 'users';
+    const q = query(collection(db, path), orderBy('createdAt', 'desc'));
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const list: UserProfile[] = [];
+      snapshot.forEach((d) => {
+        list.push({ uid: d.id, ...d.data() } as UserProfile);
+      });
+      setUsersQueue(list);
+    }, (error) => {
+      handleFirestoreError(error, OperationType.LIST, path);
+    });
+
+    return unsubscribe;
+  }, [user, profile?.role]);
+
+  // 5. Actions Handlers
+  const handleRegisterSubmit = async (profileData: { name: string; phone: string; email: string; photoURL: string }) => {
+    if (!user) return;
+    
+    // Bootstrapped administrator determination
+    const isAdminEmail = user.email === 'komailjutt884@gmail.com';
+    const initialStatus = isAdminEmail ? 'approved' : 'pending';
+    const initialRole = isAdminEmail ? 'admin' : 'user';
+
+    const newProfile: UserProfile = {
+      uid: user.uid,
+      email: profileData.email,
+      phone: profileData.phone,
+      name: profileData.name,
+      photoURL: profileData.photoURL,
+      status: initialStatus as any,
+      role: initialRole as any,
+      createdAt: serverTimestamp()
+    };
+
+    const path = `users/${user.uid}`;
+    try {
+      await setDoc(doc(db, 'users', user.uid), newProfile);
+      // Read back immediately
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists()) {
+        setProfile(userDoc.data() as UserProfile);
+      }
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, path);
+    }
+  };
+
+  const handleApproveUser = async (uid: string) => {
+    const path = `users/${uid}`;
+    try {
+      await updateDoc(doc(db, 'users', uid), { status: 'approved' });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, path);
+    }
+  };
+
+  const handleRejectUser = async (uid: string) => {
+    const path = `users/${uid}`;
+    try {
+      await updateDoc(doc(db, 'users', uid), { status: 'rejected' });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, path);
+    }
+  };
+
+  const handleAddCompanion = async (companionData: Omit<Companion, 'id' | 'createdAt'>) => {
+    const path = 'companions';
+    try {
+      await addDoc(collection(db, path), {
+        ...companionData,
+        createdAt: serverTimestamp()
+      });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, path);
+    }
+  };
+
+  const handleDeleteCompanion = async (companionId: string) => {
+    const path = `companions/${companionId}`;
+    try {
+      await deleteDoc(doc(db, 'companions', companionId));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, path);
+    }
+  };
+
+  const handleBookingSubmit = async (bookingData: Omit<Booking, 'id' | 'userId' | 'userEmail' | 'userName' | 'status' | 'createdAt'>) => {
+    if (!user || !profile) throw new Error("Unauthenticated");
+    const path = 'bookings';
+    try {
+      const docRef = await addDoc(collection(db, path), {
+        ...bookingData,
+        userId: user.uid,
+        userEmail: profile.email,
+        userName: profile.name,
+        status: 'pending_verification',
+        createdAt: serverTimestamp()
+      });
+      return docRef.id;
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, path);
+      throw err;
+    }
+  };
+
+  const handleCancelBooking = async (bookingId: string) => {
+    const path = `bookings/${bookingId}`;
+    try {
+      await updateDoc(doc(db, 'bookings', bookingId), { status: 'cancelled' });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, path);
+    }
+  };
+
+  const handleApproveBooking = async (bookingId: string) => {
+    const path = `bookings/${bookingId}`;
+    try {
+      await updateDoc(doc(db, 'bookings', bookingId), { status: 'confirmed' });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, path);
+    }
+  };
+
+  const handleRejectBooking = async (bookingId: string) => {
+    const path = `bookings/${bookingId}`;
+    try {
+      await updateDoc(doc(db, 'bookings', bookingId), { status: 'cancelled' });
+    } catch (err) {
+      handleFirestoreError(err, OperationType.UPDATE, path);
+    }
+  };
+
+  const handleSeedDemoCompanions = async () => {
+    const path = 'companions';
+    try {
+      for (const comp of SAMPLE_COMPANIONS) {
+        await addDoc(collection(db, path), {
+          ...comp,
+          createdAt: serverTimestamp()
+        });
+      }
+      alert("Successfully seeded 5 detailed companion profiles!");
+    } catch (err) {
+      handleFirestoreError(err, OperationType.WRITE, path);
+    }
+  };
+
+  // Developer Bypass to instantly approve currently pending account for easy testing
+  const handleInstantApprovalBypass = async () => {
+    if (!user) return;
+    setDevBypassLoading(true);
+    try {
+      await setDoc(doc(db, 'users', user.uid), {
+        uid: user.uid,
+        name: user.displayName || "Demo User",
+        email: user.email || "demo@yaarana.pk",
+        phone: "03123456789",
+        photoURL: user.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200",
+        status: "approved",
+        role: "user",
+        createdAt: serverTimestamp()
+      });
+      // reload profile
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists()) {
+        setProfile(userDoc.data() as UserProfile);
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Fast-pass approval failed. Use admin panel to approve.");
+    } finally {
+      setDevBypassLoading(false);
+    }
+  };
+
+  const handleInstantAdminBypass = async () => {
+    if (!user) return;
+    setDevBypassLoading(true);
+    try {
+      await setDoc(doc(db, 'users', user.uid), {
+        uid: user.uid,
+        name: user.displayName || "Komail Ahmed (Admin)",
+        email: user.email || "komailjutt884@gmail.com",
+        phone: "03217654321",
+        photoURL: user.photoURL || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200",
+        status: "approved",
+        role: "admin",
+        createdAt: serverTimestamp()
+      });
+      // reload profile
+      const userDoc = await getDoc(doc(db, 'users', user.uid));
+      if (userDoc.exists()) {
+        setProfile(userDoc.data() as UserProfile);
+        setActiveTab('admin');
+      }
+    } catch (err) {
+      console.error(err);
+      alert("Admin escalation failed.");
+    } finally {
+      setDevBypassLoading(false);
+    }
+  };
+
+  const handleSelectCompanion = (companion: Companion) => {
+    setSelectedCompanion(companion);
+    setActiveTab('booking');
+  };
+
+  const handleLogout = () => {
+    setUser(null);
+    setProfile(null);
+    setActiveTab('browse');
+  };
+
+  if (authLoading) {
+    return (
+      <div className="min-h-screen bg-rose-50 flex flex-col items-center justify-center space-y-4">
+        <Loader2 className="w-10 h-10 text-rose-500 animate-spin" />
+        <p className="text-sm font-semibold text-rose-700 font-sans tracking-wide">Loading Yaarana.pk core services...</p>
+      </div>
+    );
+  }
+
+  // 1. If not logged in at all, show LoginPage
+  if (!user) {
+    return (
+      <div className="min-h-screen bg-rose-50/50 p-4 md:p-8 flex flex-col justify-between">
+        <div className="flex-1 flex items-center justify-center">
+          <LoginPage onRegisterSubmit={handleRegisterSubmit} />
+        </div>
+        <footer className="text-center text-[10px] text-gray-400 font-medium py-4">
+          © 2026 Yaarana.pk Companion Services. All rights reserved. Made for discretion & warmth.
+        </footer>
+      </div>
+    );
+  }
+
+  // 2. If logged in but doesn't have a profile record yet, show LoginPage profile form
+  if (user && !profile) {
+    return (
+      <div className="min-h-screen bg-rose-50/50 p-4 md:p-8 flex flex-col justify-between">
+        <div className="flex-1 flex items-center justify-center">
+          <LoginPage
+            onRegisterSubmit={handleRegisterSubmit}
+            userEmail={user.email}
+            userPhone={user.phoneNumber}
+          />
+        </div>
+        <footer className="text-center text-[10px] text-gray-400 font-medium py-4">
+          © 2026 Yaarana.pk Companion Services. All rights reserved. Made for discretion & warmth.
+        </footer>
+      </div>
+    );
+  }
+
+  // 3. If account is pending approval (And is not admin)
+  if (profile && profile.status === 'pending' && profile.role !== 'admin') {
+    return (
+      <div className="min-h-screen bg-rose-50/50 p-6 flex flex-col items-center justify-center">
+        <div className="bg-white rounded-3xl p-8 max-w-md w-full shadow-xl border border-rose-100 text-center space-y-6 animate-in fade-in zoom-in-95 duration-200">
+          <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto text-amber-500 animate-pulse border border-amber-100">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-black text-gray-800">Registration Under Review</h2>
+            <p className="text-xs font-bold uppercase tracking-widest text-amber-600">Verification Pending</p>
+          </div>
+          <p className="text-xs text-gray-500 leading-relaxed">
+            Thank you for registering on <span className="font-extrabold text-rose-500">Yaarana.pk</span>! Your account has been received and is currently under review by our safety audit team to prevent fraud and ensure certified credentials.
+          </p>
+          <div className="bg-rose-50/50 p-4 rounded-2xl text-[11px] text-rose-800 border border-rose-100/50 italic font-medium">
+            "Verification typically takes between 5 to 30 minutes. Please refresh this page or check back later."
+          </div>
+
+          <div className="flex gap-2 justify-center">
+            <button
+              onClick={async () => {
+                const userDoc = await getDoc(doc(db, 'users', user.uid));
+                if (userDoc.exists()) {
+                  setProfile(userDoc.data() as UserProfile);
+                }
+              }}
+              className="px-4 py-2.5 bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-700 font-extrabold rounded-xl text-xs transition-colors flex items-center gap-1.5"
+            >
+              <RefreshCw className="w-3.5 h-3.5" />
+              <span>Refresh Status</span>
+            </button>
+            <button
+              onClick={() => signOut(auth).then(handleLogout)}
+              className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-100 font-extrabold rounded-xl text-xs transition-colors flex items-center gap-1.5"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Logout</span>
+            </button>
+          </div>
+
+          {/* Tester / Developer Fast-Pass Container */}
+          <div className="border-t border-dashed border-gray-200 pt-6 space-y-3">
+            <div className="text-[10px] uppercase font-bold tracking-widest text-gray-400 flex items-center justify-center gap-1">
+              <Sparkles className="w-3.5 h-3.5 text-amber-400" />
+              <span>AI Studio Developer Fast-Pass</span>
+            </div>
+            <div className="flex flex-col gap-2">
+              <button
+                onClick={handleInstantApprovalBypass}
+                disabled={devBypassLoading}
+                className="w-full py-2.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white font-extrabold rounded-xl text-xs shadow hover:from-emerald-600 hover:to-teal-700 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                {devBypassLoading ? "Bypassing..." : "Instant Fast-Pass Approve"}
+              </button>
+              <button
+                onClick={handleInstantAdminBypass}
+                disabled={devBypassLoading}
+                className="w-full py-2 bg-slate-900 text-white font-extrabold rounded-xl text-xs shadow hover:bg-slate-800 transition-all flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                {devBypassLoading ? "Escalating..." : "Log in as Admin Mode"}
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // 4. Main Approved Interface
+  return (
+    <div className="min-h-screen bg-warm-bg font-sans flex flex-col justify-between">
+      
+      {/* Top Navigation Header */}
+      <header className="sticky top-0 bg-white/95 backdrop-blur-md border-b border-gray-100 z-30 shadow-sm shrink-0">
+        <div className="max-w-7xl mx-auto px-4 md:px-8 h-20 flex items-center justify-between">
+          
+          {/* Logo */}
+          <button
+            onClick={() => setActiveTab('browse')}
+            className="flex items-center gap-2 group"
+          >
+            <div className="w-10 h-10 bg-brand rounded-xl flex items-center justify-center shadow-lg shadow-brand/20 group-hover:scale-105 transition-transform">
+              <span className="text-white font-black text-2xl font-display">Y</span>
+            </div>
+            <span className="text-2xl font-bold tracking-tight text-gray-800 font-display">
+              Yaarana<span className="text-brand">.pk</span>
+            </span>
+          </button>
+
+          {/* Navigation Links & User Badge */}
+          <div className="flex items-center gap-4">
+            <nav className="flex items-center gap-1 md:gap-2">
+              <button
+                onClick={() => setActiveTab('browse')}
+                className={`px-4 py-2.5 rounded-2xl text-xs font-bold tracking-tight transition-all ${
+                  activeTab === 'browse' 
+                    ? 'bg-active-bg text-brand font-black shadow-sm border border-brand/10' 
+                    : 'text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                Partners
+              </button>
+              
+              <button
+                onClick={() => setActiveTab('booking')}
+                className={`px-4 py-2.5 rounded-2xl text-xs font-bold tracking-tight transition-all ${
+                  activeTab === 'booking' 
+                    ? 'bg-active-bg text-brand font-black shadow-sm border border-brand/10' 
+                    : 'text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                Book Now
+              </button>
+
+              <button
+                onClick={() => setActiveTab('history')}
+                className={`px-4 py-2.5 rounded-2xl text-xs font-bold tracking-tight transition-all flex items-center gap-1.5 ${
+                  activeTab === 'history' 
+                    ? 'bg-active-bg text-brand font-black shadow-sm border border-brand/10' 
+                    : 'text-gray-500 hover:bg-gray-50'
+                }`}
+              >
+                <History className="w-3.5 h-3.5 shrink-0" />
+                <span className="hidden sm:inline">My Account</span>
+              </button>
+
+              {profile?.role === 'admin' && (
+                <button
+                  onClick={() => setActiveTab('admin')}
+                  className={`px-4 py-2.5 rounded-2xl text-xs font-bold tracking-tight transition-all bg-slate-900 text-amber-400 border border-slate-850 ${
+                    activeTab === 'admin' ? 'ring-2 ring-brand' : 'hover:bg-slate-800'
+                  }`}
+                >
+                  Admin Portal
+                </button>
+              )}
+            </nav>
+
+            {/* User Profile Badge */}
+            {profile && (
+              <div className="hidden md:flex items-center gap-3 bg-gray-50 px-4 py-2 rounded-full border border-gray-100">
+                <img
+                  src={profile.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=100"}
+                  alt={profile.name}
+                  referrerPolicy="no-referrer"
+                  className="w-7 h-7 rounded-full object-cover border border-brand/10"
+                />
+                <span className="font-bold text-xs text-gray-700 max-w-[120px] truncate">{profile.name}</span>
+              </div>
+            )}
+          </div>
+        </div>
+      </header>
+
+      {/* Main Container */}
+      <main className="flex-1 max-w-7xl w-full mx-auto px-4 md:px-8 py-8">
+        {activeTab === 'browse' && (
+          <BrowseCompanions
+            companions={companions}
+            onSelectCompanion={handleSelectCompanion}
+            onSeedDemoCompanions={handleSeedDemoCompanions}
+            isAdmin={profile?.role === 'admin'}
+          />
+        )}
+
+        {activeTab === 'booking' && (
+          <BookingPage
+            selectedCompanion={selectedCompanion}
+            onBookingSubmit={handleBookingSubmit}
+            onNavigateToHistory={() => setActiveTab('history')}
+            companions={companions}
+            onSelectCompanionFromDropdown={(comp) => setSelectedCompanion(comp)}
+          />
+        )}
+
+        {activeTab === 'history' && (
+          <MyAccount
+            profile={profile}
+            bookings={bookings}
+            onCancelBooking={handleCancelBooking}
+            onLogout={handleLogout}
+          />
+        )}
+
+        {activeTab === 'admin' && profile?.role === 'admin' && (
+          <AdminPanel
+            usersQueue={usersQueue}
+            companions={companions}
+            bookings={bookings}
+            onApproveUser={handleApproveUser}
+            onRejectUser={handleRejectUser}
+            onAddCompanion={handleAddCompanion}
+            onDeleteCompanion={handleDeleteCompanion}
+            onSeedDemoCompanions={handleSeedDemoCompanions}
+            onApproveBooking={handleApproveBooking}
+            onRejectBooking={handleRejectBooking}
+          />
+        )}
+      </main>
+
+      {/* Footer */}
+      <footer className="bg-white border-t border-rose-100/50 py-6 px-4 md:px-8 text-center shrink-0">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-4 text-xs text-gray-400">
+          <div className="flex items-center gap-2 justify-center">
+            <ShieldCheck className="w-5 h-5 text-emerald-500 shrink-0" />
+            <span>Yaarana.pk Companion Booking Service. Curing Loneliness since 2026.</span>
+          </div>
+          <div>
+            Discreet & Certified • All Activities strictly consensual.
+          </div>
+        </div>
+      </footer>
+    </div>
+  );
+}

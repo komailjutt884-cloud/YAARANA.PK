@@ -1,0 +1,76 @@
+{
+  "entities": {
+    "User": {
+      "title": "User",
+      "description": "User profile with registration details and admin approval status",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "name": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending", "approved", "rejected"] },
+        "role": { "type": "string", "enum": ["user", "admin"] },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["email", "phone", "name", "status", "role", "createdAt"]
+    },
+    "Companion": {
+      "title": "Companion",
+      "description": "Details of companions added by admin for booking",
+      "type": "object",
+      "properties": {
+        "name": { "type": "string" },
+        "age": { "type": "number" },
+        "gender": { "type": "string" },
+        "location": { "type": "string" },
+        "photoUrl": { "type": "string" },
+        "rate": { "type": "number" },
+        "services": { "type": "array" },
+        "about": { "type": "string" },
+        "rating": { "type": "number" },
+        "reviewsCount": { "type": "number" },
+        "availability": { "type": "string" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "age", "gender", "location", "photoUrl", "rate", "services", "about", "availability", "createdAt"]
+    },
+    "Booking": {
+      "title": "Booking",
+      "description": "Booking request from user for a companion",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userEmail": { "type": "string" },
+        "userName": { "type": "string" },
+        "companionId": { "type": "string" },
+        "companionName": { "type": "string" },
+        "companionPhotoUrl": { "type": "string" },
+        "activity": { "type": "string" },
+        "duration": { "type": "number" },
+        "totalAmount": { "type": "number" },
+        "paymentMethod": { "type": "string", "enum": ["JazzCash", "EasyPaisa"] },
+        "walletNumber": { "type": "string" },
+        "last4Digits": { "type": "string" },
+        "status": { "type": "string", "enum": ["pending_verification", "confirmed", "cancelled"] },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "bookingDate": { "type": "string" }
+      },
+      "required": ["userId", "companionId", "activity", "duration", "totalAmount", "paymentMethod", "walletNumber", "last4Digits", "status", "createdAt", "bookingDate"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User accounts with roles and registration statuses"
+    },
+    "/companions/{companionId}": {
+      "schema": "Companion",
+      "description": "List of active companions available for hiring"
+    },
+    "/bookings/{bookingId}": {
+      "schema": "Booking",
+      "description": "Companion booking records"
+    }
+  }
+}

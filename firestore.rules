@@ -1,0 +1,158 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // 1. Global Safety Net - Default Deny
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Global Helpers
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      // Check if signed in with phone (verified by SMS) or verified email
+      return isSignedIn() && (
+        request.auth.token.firebase.sign_in_provider == 'phone' ||
+        request.auth.token.email_verified == true
+      );
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == "komailjutt884@gmail.com" ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == "admin")
+      );
+    }
+
+    function isApprovedUser() {
+      return isSignedIn() && (
+        request.auth.token.email == "komailjutt884@gmail.com" ||
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         get(/databases/$(database)/documents/users/$(request.auth.uid)).data.status == "approved")
+      );
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // 2. User Profiles Rules
+    match /users/{userId} {
+      allow get: if isSignedIn();
+      
+      // Let admins query users list, and users query their own profile
+      allow list: if isSignedIn() && (
+        isAdmin() || 
+        userId == request.auth.uid
+      );
+
+      allow create: if isSignedIn() && 
+                    userId == request.auth.uid && 
+                    isValidId(userId) &&
+                    incoming().keys().hasAll(['email', 'phone', 'name', 'status', 'role', 'createdAt']) &&
+                    incoming().keys().size() == 7 && // email, phone, name, status, role, createdAt, photoURL
+                    incoming().email is string &&
+                    incoming().phone is string &&
+                    incoming().name is string &&
+                    incoming().name.size() > 0 &&
+                    incoming().name.size() <= 100 &&
+                    incoming().status == "pending" &&
+                    incoming().role == "user" &&
+                    incoming().createdAt == request.time;
+
+      allow update: if isSignedIn() && 
+                    userId == request.auth.uid && 
+                    isValidId(userId) && (
+                      // Action 1: Admin can update status and role
+                      isAdmin() ||
+                      // Action 2: User can update limited profile info, ensuring role & status are immutable
+                      (
+                        incoming().email == existing().email &&
+                        incoming().createdAt == existing().createdAt &&
+                        incoming().role == existing().role &&
+                        incoming().status == existing().status &&
+                        incoming().diff(existing()).affectedKeys().hasOnly(['name', 'phone', 'photoURL'])
+                      )
+                    );
+    }
+
+    // 3. Companion Rules
+    match /companions/{companionId} {
+      // Only approved users or admins can read companions
+      allow get, list: if isApprovedUser() || isAdmin();
+
+      // Only admins can add, update, or remove companions
+      allow create: if isAdmin() &&
+                    isValidId(companionId) &&
+                    incoming().keys().hasAll(['name', 'age', 'gender', 'location', 'photoUrl', 'rate', 'services', 'about', 'availability', 'createdAt']) &&
+                    incoming().name is string &&
+                    incoming().age is number &&
+                    incoming().gender is string &&
+                    incoming().location is string &&
+                    incoming().photoUrl is string &&
+                    incoming().rate is number &&
+                    incoming().services is list &&
+                    incoming().about is string &&
+                    incoming().availability is string &&
+                    incoming().createdAt == request.time;
+
+      allow update: if isAdmin() &&
+                    isValidId(companionId) &&
+                    incoming().createdAt == existing().createdAt;
+
+      allow delete: if isAdmin() && isValidId(companionId);
+    }
+
+    // 4. Booking Rules
+    match /bookings/{bookingId} {
+      // Users can see their own bookings, admins can see all
+      allow get, list: if isSignedIn() && (
+        resource.data.userId == request.auth.uid || 
+        isAdmin()
+      );
+
+      // Bookings can be created by approved users for themselves
+      allow create: if isApprovedUser() &&
+                    isValidId(bookingId) &&
+                    incoming().userId == request.auth.uid &&
+                    incoming().keys().hasAll(['userId', 'companionId', 'activity', 'duration', 'totalAmount', 'paymentMethod', 'walletNumber', 'last4Digits', 'status', 'createdAt', 'bookingDate']) &&
+                    incoming().status == 'pending_verification' &&
+                    incoming().createdAt == request.time;
+
+      // Allow users to cancel pending bookings, allow admins to approve/cancel
+      allow update: if isSignedIn() && 
+                    isValidId(bookingId) && (
+                      // Action 1: Admin updates status (e.g. confirms/cancels) or fields
+                      isAdmin() ||
+                      // Action 2: User cancels their own pending booking
+                      (
+                        existing().userId == request.auth.uid &&
+                        existing().status == 'pending_verification' &&
+                        incoming().status == 'cancelled' &&
+                        incoming().userId == existing().userId &&
+                        incoming().companionId == existing().companionId &&
+                        incoming().activity == existing().activity &&
+                        incoming().duration == existing().duration &&
+                        incoming().totalAmount == existing().totalAmount &&
+                        incoming().paymentMethod == existing().paymentMethod &&
+                        incoming().walletNumber == existing().walletNumber &&
+                        incoming().last4Digits == existing().last4Digits &&
+                        incoming().createdAt == existing().createdAt &&
+                        incoming().bookingDate == existing().bookingDate
+                      )
+                    );
+    }
+  }
+}
