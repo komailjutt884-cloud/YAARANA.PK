@@ -1,8 +1,6 @@
 import React from 'react';
 import { UserProfile, Booking } from '../types';
 import { User, Phone, Mail, History, Shield, CheckCircle, Clock, AlertCircle, XCircle, LogOut } from 'lucide-react';
-import { signOut } from 'firebase/auth';
-import { auth } from '../firebase';
 
 interface MyAccountProps {
   profile: UserProfile | null;
@@ -13,12 +11,7 @@ interface MyAccountProps {
 
 export default function MyAccount({ profile, bookings, onCancelBooking, onLogout }: MyAccountProps) {
   const handleSignOut = async () => {
-    try {
-      await signOut(auth);
-      onLogout();
-    } catch (err) {
-      console.error("Sign out error", err);
-    }
+    onLogout();
   };
 
   // Helper for status styling

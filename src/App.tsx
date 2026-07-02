@@ -1,21 +1,4 @@
 import React, { useEffect, useState } from 'react';
-import { auth, db, handleFirestoreError, OperationType } from './firebase';
-import { onAuthStateChanged, signOut, signInWithPopup, GoogleAuthProvider } from 'firebase/auth';
-import {
-  doc,
-  getDoc,
-  setDoc,
-  updateDoc,
-  deleteDoc,
-  addDoc,
-  collection,
-  onSnapshot,
-  query,
-  where,
-  orderBy,
-  serverTimestamp
-} from 'firebase/firestore';
-import { SAMPLE_COMPANIONS } from './data/sampleCompanions';
 import { UserProfile, Companion, Booking } from './types';
 import LoginPage from './components/LoginPage';
 import BrowseCompanions from './components/BrowseCompanions';
@@ -23,6 +6,28 @@ import BookingPage from './components/BookingPage';
 import MyAccount from './components/MyAccount';
 import AdminPanel from './components/AdminPanel';
 import { Heart, User, ShieldCheck, History, LogOut, Loader2, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
+import { SAMPLE_COMPANIONS } from './data/sampleCompanions';
+import { isSupabaseConfigured } from './supabase';
+
+// Import unified database operations
+import {
+  subscribeAuth,
+  signOutUser,
+  getProfile,
+  saveProfile,
+  subscribeCompanions,
+  subscribeBookings,
+  subscribeUsersQueue,
+  approveUser,
+  rejectUser,
+  addCompanion,
+  deleteCompanion,
+  submitBooking,
+  cancelBooking,
+  approveBooking,
+  rejectBooking,
+  seedCompanions
+} from './dbAdapter';
 
 export default function App() {
   const [isDemoMode, setIsDemoMode] = useState<boolean>(() => {
@@ -57,7 +62,7 @@ export default function App() {
   const [authLoading, setAuthLoading] = useState(true);
   const [activeTab, setActiveTab] = useState<'browse' | 'booking' | 'history' | 'admin'>('browse');
 
-  // Firestore Data State
+  // Unified Data State
   const [companions, setCompanions] = useState<Companion[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [usersQueue, setUsersQueue] = useState<UserProfile[]>([]);
@@ -168,39 +173,37 @@ export default function App() {
     }
   };
 
-  // 1. Auth Listener
+  // 1. Auth Listener using unified adapter
   useEffect(() => {
     if (isDemoMode) {
       setAuthLoading(false);
       return;
     }
-    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
+    const unsubscribe = subscribeAuth(isDemoMode, async (currentUser) => {
       setUser(currentUser);
       if (currentUser) {
-        // Fetch or create profile
-        const userDocRef = doc(db, 'users', currentUser.uid);
         try {
-          const userDoc = await getDoc(userDocRef);
-          if (userDoc.exists()) {
-            const data = userDoc.data() as UserProfile;
-            const isAdminEmail = currentUser.email === 'komailjutt884@gmail.com';
-            if (isAdminEmail && (data.role !== 'admin' || data.status !== 'approved')) {
-              const updatedProfile: UserProfile = {
-                ...data,
-                role: 'admin',
-                status: 'approved'
-              };
-              try {
-                await updateDoc(userDocRef, { role: 'admin', status: 'approved' });
-              } catch (e) {
-                console.error("Failed to auto-upgrade document role:", e);
-              }
-              setProfile(updatedProfile);
+          const fetchedProfile = await getProfile(isDemoMode, currentUser);
+          if (fetchedProfile) {
+            const isAdminEmail = (currentUser.email || '').toLowerCase() === 'komailjutt884@gmail.com';
+            if (isAdminEmail && (fetchedProfile.role !== 'admin' || fetchedProfile.status !== 'approved')) {
+              const updated = await saveProfile(
+                isDemoMode, 
+                currentUser, 
+                {
+                  name: fetchedProfile.name,
+                  phone: fetchedProfile.phone,
+                  email: fetchedProfile.email,
+                  photoURL: fetchedProfile.photoURL
+                }, 
+                'admin'
+              );
+              setProfile(updated);
             } else {
-              setProfile(data);
+              setProfile(fetchedProfile);
             }
           } else {
-            // Wait for LoginPage registration submit to create the profile
+            // Wait for user registration form input
             setProfile(null);
           }
         } catch (err) {
@@ -214,78 +217,44 @@ export default function App() {
     return unsubscribe;
   }, [isDemoMode]);
 
-  // 2. Real-time companions snapshot
+  // 2. Real-time companions snapshot using unified adapter
   useEffect(() => {
     if (isDemoMode) return;
-    if (!user || !profile || profile.status !== 'approved' && profile.role !== 'admin') return;
+    if (!user || !profile || (profile.status !== 'approved' && profile.role !== 'admin')) return;
 
-    const path = 'companions';
-    const q = query(collection(db, path), orderBy('createdAt', 'desc'));
-    
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: Companion[] = [];
-      snapshot.forEach((d) => {
-        list.push({ id: d.id, ...d.data() } as Companion);
-      });
+    const unsubscribe = subscribeCompanions(isDemoMode, (list) => {
       setCompanions(list);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
     });
 
     return unsubscribe;
   }, [user, profile?.status, profile?.role, isDemoMode]);
 
-  // 3. Real-time user bookings snapshot
+  // 3. Real-time user bookings snapshot using unified adapter
   useEffect(() => {
     if (isDemoMode) return;
     if (!user || !profile) return;
 
-    const path = 'bookings';
-    let q;
-
-    if (profile.role === 'admin') {
-      // Admins see all bookings
-      q = query(collection(db, path), orderBy('createdAt', 'desc'));
-    } else {
-      // Users see only their own bookings
-      q = query(collection(db, path), where('userId', '==', user.uid), orderBy('createdAt', 'desc'));
-    }
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: Booking[] = [];
-      snapshot.forEach((d) => {
-        list.push({ id: d.id, ...d.data() } as Booking);
-      });
+    const unsubscribe = subscribeBookings(isDemoMode, user, profile, (list) => {
       setBookings(list);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
     });
 
     return unsubscribe;
   }, [user, profile?.role, isDemoMode]);
 
-  // 4. Real-time admin users list
+  // 4. Real-time admin users list using unified adapter
   useEffect(() => {
     if (isDemoMode) return;
     if (!user || profile?.role !== 'admin') return;
 
-    const path = 'users';
-    const q = query(collection(db, path), orderBy('createdAt', 'desc'));
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const list: UserProfile[] = [];
-      snapshot.forEach((d) => {
-        list.push({ uid: d.id, ...d.data() } as UserProfile);
-      });
+    const unsubscribe = subscribeUsersQueue(isDemoMode, user, profile, (list) => {
       setUsersQueue(list);
-    }, (error) => {
-      handleFirestoreError(error, OperationType.LIST, path);
     });
 
     return unsubscribe;
   }, [user, profile?.role, isDemoMode]);
 
   // 5. Actions Handlers
+
   const handleRegisterSubmit = async (profileData: { name: string; phone: string; email: string; photoURL: string }) => {
     if (isDemoMode) {
       const newProfile: UserProfile = {
@@ -304,32 +273,11 @@ export default function App() {
     }
     if (!user) return;
     
-    // Bootstrapped administrator determination
-    const isAdminEmail = user.email === 'komailjutt884@gmail.com';
-    const initialStatus = 'approved';
-    const initialRole = isAdminEmail ? 'admin' : 'user';
-
-    const newProfile: UserProfile = {
-      uid: user.uid,
-      email: profileData.email,
-      phone: profileData.phone,
-      name: profileData.name,
-      photoURL: profileData.photoURL,
-      status: initialStatus as any,
-      role: initialRole as any,
-      createdAt: serverTimestamp()
-    };
-
-    const path = `users/${user.uid}`;
     try {
-      await setDoc(doc(db, 'users', user.uid), newProfile);
-      // Read back immediately
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (userDoc.exists()) {
-        setProfile(userDoc.data() as UserProfile);
-      }
+      const saved = await saveProfile(isDemoMode, user, profileData);
+      setProfile(saved);
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, path);
+      console.error("Register submit error:", err);
     }
   };
 
@@ -339,11 +287,10 @@ export default function App() {
       saveDemoUsersQueue(updated);
       return;
     }
-    const path = `users/${uid}`;
     try {
-      await updateDoc(doc(db, 'users', uid), { status: 'approved' });
+      await approveUser(isDemoMode, uid);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, path);
+      console.error("Approve user error:", err);
     }
   };
 
@@ -353,11 +300,10 @@ export default function App() {
       saveDemoUsersQueue(updated);
       return;
     }
-    const path = `users/${uid}`;
     try {
-      await updateDoc(doc(db, 'users', uid), { status: 'rejected' });
+      await rejectUser(isDemoMode, uid);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, path);
+      console.error("Reject user error:", err);
     }
   };
 
@@ -373,14 +319,10 @@ export default function App() {
       saveDemoCompanions([newComp, ...companions]);
       return;
     }
-    const path = 'companions';
     try {
-      await addDoc(collection(db, path), {
-        ...companionData,
-        createdAt: serverTimestamp()
-      });
+      await addCompanion(isDemoMode, companionData);
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, path);
+      console.error("Add companion error:", err);
     }
   };
 
@@ -390,11 +332,10 @@ export default function App() {
       saveDemoCompanions(updated);
       return;
     }
-    const path = `companions/${companionId}`;
     try {
-      await deleteDoc(doc(db, 'companions', companionId));
+      await deleteCompanion(isDemoMode, companionId);
     } catch (err) {
-      handleFirestoreError(err, OperationType.DELETE, path);
+      console.error("Delete companion error:", err);
     }
   };
 
@@ -412,20 +353,10 @@ export default function App() {
       saveDemoBookings([newBooking, ...bookings]);
       return newBooking.id;
     }
-    if (!user || !profile) throw new Error("Unauthenticated");
-    const path = 'bookings';
     try {
-      const docRef = await addDoc(collection(db, path), {
-        ...bookingData,
-        userId: user.uid,
-        userEmail: profile.email,
-        userName: profile.name,
-        status: 'pending_verification',
-        createdAt: serverTimestamp()
-      });
-      return docRef.id;
+      return await submitBooking(isDemoMode, user, profile, bookingData);
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, path);
+      console.error("Submit booking error:", err);
       throw err;
     }
   };
@@ -436,11 +367,10 @@ export default function App() {
       saveDemoBookings(updated);
       return;
     }
-    const path = `bookings/${bookingId}`;
     try {
-      await updateDoc(doc(db, 'bookings', bookingId), { status: 'cancelled' });
+      await cancelBooking(isDemoMode, bookingId);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, path);
+      console.error("Cancel booking error:", err);
     }
   };
 
@@ -450,11 +380,10 @@ export default function App() {
       saveDemoBookings(updated);
       return;
     }
-    const path = `bookings/${bookingId}`;
     try {
-      await updateDoc(doc(db, 'bookings', bookingId), { status: 'confirmed' });
+      await approveBooking(isDemoMode, bookingId);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, path);
+      console.error("Approve booking error:", err);
     }
   };
 
@@ -464,11 +393,10 @@ export default function App() {
       saveDemoBookings(updated);
       return;
     }
-    const path = `bookings/${bookingId}`;
     try {
-      await updateDoc(doc(db, 'bookings', bookingId), { status: 'cancelled' });
+      await rejectBooking(isDemoMode, bookingId);
     } catch (err) {
-      handleFirestoreError(err, OperationType.UPDATE, path);
+      console.error("Reject booking error:", err);
     }
   };
 
@@ -479,17 +407,11 @@ export default function App() {
       alert("Successfully seeded 5 detailed companion profiles!");
       return;
     }
-    const path = 'companions';
     try {
-      for (const comp of SAMPLE_COMPANIONS) {
-        await addDoc(collection(db, path), {
-          ...comp,
-          createdAt: serverTimestamp()
-        });
-      }
+      await seedCompanions(isDemoMode);
       alert("Successfully seeded 5 detailed companion profiles!");
     } catch (err) {
-      handleFirestoreError(err, OperationType.WRITE, path);
+      console.error("Seed error:", err);
     }
   };
 
@@ -513,24 +435,16 @@ export default function App() {
     if (!user) return;
     setDevBypassLoading(true);
     try {
-      await setDoc(doc(db, 'users', user.uid), {
-        uid: user.uid,
+      const saved = await saveProfile(isDemoMode, user, {
         name: user.displayName || "Demo User",
         email: user.email || "demo@yaarana.pk",
         phone: "03123456789",
-        photoURL: user.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200",
-        status: "approved",
-        role: "user",
-        createdAt: serverTimestamp()
-      });
-      // reload profile
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (userDoc.exists()) {
-        setProfile(userDoc.data() as UserProfile);
-      }
+        photoURL: user.photoURL || "https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200"
+      }, 'user');
+      setProfile(saved);
     } catch (err) {
       console.error(err);
-      alert("Fast-pass approval failed. Use admin panel to approve.");
+      alert("Fast-pass approval failed.");
     } finally {
       setDevBypassLoading(false);
     }
@@ -556,22 +470,14 @@ export default function App() {
     if (!user) return;
     setDevBypassLoading(true);
     try {
-      await setDoc(doc(db, 'users', user.uid), {
-        uid: user.uid,
+      const saved = await saveProfile(isDemoMode, user, {
         name: user.displayName || "Komail Ahmed (Admin)",
         email: user.email || "komailjutt884@gmail.com",
         phone: "03217654321",
-        photoURL: user.photoURL || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200",
-        status: "approved",
-        role: "admin",
-        createdAt: serverTimestamp()
-      });
-      // reload profile
-      const userDoc = await getDoc(doc(db, 'users', user.uid));
-      if (userDoc.exists()) {
-        setProfile(userDoc.data() as UserProfile);
-        setActiveTab('admin');
-      }
+        photoURL: user.photoURL || "https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=200"
+      }, 'admin');
+      setProfile(saved);
+      setActiveTab('admin');
     } catch (err) {
       console.error(err);
       alert("Admin escalation failed.");
@@ -596,18 +502,18 @@ export default function App() {
       setActiveTab('browse');
       return;
     }
-    signOut(auth).then(() => {
+    signOutUser(isDemoMode).then(() => {
       setUser(null);
       setProfile(null);
       setActiveTab('browse');
     }).catch(err => {
       console.error("Signout error", err);
-      // fallback
       setUser(null);
       setProfile(null);
       setActiveTab('browse');
     });
   };
+
 
   if (authLoading) {
     return (
@@ -673,9 +579,9 @@ export default function App() {
           <div className="flex gap-2 justify-center">
             <button
               onClick={async () => {
-                const userDoc = await getDoc(doc(db, 'users', user.uid));
-                if (userDoc.exists()) {
-                  setProfile(userDoc.data() as UserProfile);
+                const fetched = await getProfile(isDemoMode, user);
+                if (fetched) {
+                  setProfile(fetched);
                 }
               }}
               className="px-4 py-2.5 bg-gray-50 border border-gray-200 hover:bg-gray-100 text-gray-700 font-extrabold rounded-xl text-xs transition-colors flex items-center gap-1.5"
@@ -684,7 +590,7 @@ export default function App() {
               <span>Refresh Status</span>
             </button>
             <button
-              onClick={() => signOut(auth).then(handleLogout)}
+              onClick={handleLogout}
               className="px-4 py-2.5 bg-rose-50 hover:bg-rose-100 text-rose-600 border border-rose-100 font-extrabold rounded-xl text-xs transition-colors flex items-center gap-1.5"
             >
               <LogOut className="w-3.5 h-3.5" />

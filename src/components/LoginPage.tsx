@@ -1,7 +1,5 @@
 import React, { useState } from 'react';
-import { auth, db, googleProvider } from '../firebase';
-import { signInWithPopup, signInWithPhoneNumber, RecaptchaVerifier } from 'firebase/auth';
-import { doc, setDoc, serverTimestamp } from 'firebase/firestore';
+import { signInWithGoogle, sendPhoneOTP, verifyPhoneOTP } from '../dbAdapter';
 import { User, Phone, Mail, Image as ImageIcon, Sparkles, ShieldCheck, AlertCircle } from 'lucide-react';
 
 interface LoginPageProps {
@@ -30,26 +28,12 @@ export default function LoginPage({ onRegisterSubmit, userEmail, userPhone, onDe
     setLoading(true);
     setError(null);
     try {
-      await signInWithPopup(auth, googleProvider);
+      await signInWithGoogle(false);
     } catch (err: any) {
       console.error(err);
       setError(err.message || "Failed to sign in with Google.");
     } finally {
       setLoading(false);
-    }
-  };
-
-  const setupRecaptcha = () => {
-    if ((window as any).recaptchaVerifier) return;
-    try {
-      (window as any).recaptchaVerifier = new RecaptchaVerifier(auth, 'recaptcha-container', {
-        size: 'invisible',
-        callback: () => {
-          console.log('reCAPTCHA solved');
-        }
-      });
-    } catch (err) {
-      console.error('Recaptcha error', err);
     }
   };
 
@@ -59,11 +43,9 @@ export default function LoginPage({ onRegisterSubmit, userEmail, userPhone, onDe
     setLoading(true);
     setError(null);
     try {
-      setupRecaptcha();
-      const appVerifier = (window as any).recaptchaVerifier;
       const formattedPhone = phoneNumber.startsWith('+') ? phoneNumber : `+92${phoneNumber.replace(/^0/, '')}`;
-      const confirmationResult = await signInWithPhoneNumber(auth, formattedPhone, appVerifier);
-      setVerificationId(confirmationResult);
+      const resultObj = await sendPhoneOTP(false, formattedPhone);
+      setVerificationId(resultObj);
     } catch (err: any) {
       console.error(err);
       setError(err.message || "Failed to send SMS code. Make sure format is correct (+923xxxxxxxxx).");
@@ -78,7 +60,7 @@ export default function LoginPage({ onRegisterSubmit, userEmail, userPhone, onDe
     setLoading(true);
     setError(null);
     try {
-      await verificationId.confirm(verificationCode);
+      await verifyPhoneOTP(false, verificationId, verificationCode);
     } catch (err: any) {
       console.error(err);
       setError("Invalid confirmation code. Please try again.");
@@ -231,7 +213,6 @@ export default function LoginPage({ onRegisterSubmit, userEmail, userPhone, onDe
   // Otherwise, standard Login Page
   return (
     <div className="max-w-md mx-auto my-12 bg-white rounded-[32px] shadow-xl overflow-hidden border border-gray-100">
-      <div id="recaptcha-container"></div>
       
       {/* Dynamic Header */}
       <div className="bg-slate-900 p-10 text-white text-center relative border-b border-gray-800">
