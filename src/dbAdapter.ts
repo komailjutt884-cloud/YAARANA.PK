@@ -402,12 +402,13 @@ export async function saveProfile(
       .maybeSingle();
 
     let error;
-    if (existing) {
-      // Update existing profile
-      const { error: updateError } = await supabase
-        .from('profiles')
-        .update(dbPayload)
-        .eq('uid', userId);
+    const { error } = await supabase
+    .from("profiles")
+    .upsert(dbPayload, {
+        onConflict: "uid",
+    });
+
+if (error) throw error;
       error = updateError;
     } else {
       // Insert new profile
