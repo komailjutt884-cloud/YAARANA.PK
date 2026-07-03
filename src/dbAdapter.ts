@@ -394,41 +394,15 @@ export async function saveProfile(
   if (isSupabaseConfigured && supabase) {
     const dbPayload = mapProfileToDb(newProfile);
     
-    // Check if profile already exists
-    const { data: existing } = await supabase
-      .from('profiles')
-      .select('uid')
-      .eq('uid', userId)
-      .maybeSingle();
-
-    let error;
-    const { error } = await supabase
-    .from("profiles")
-    .upsert(dbPayload, {
-        onConflict: "uid",
-    });
+ const { error } = await supabase
+  .from("profiles")
+  .upsert(dbPayload, {
+    onConflict: "uid",
+  });
 
 if (error) throw error;
-      error = updateError;
-    } else {
-      // Insert new profile
-      const { error: insertError } = await supabase
-        .from('profiles')
-        .insert(dbPayload);
-      error = insertError;
-    }
 
-    if (error) throw error;
-    return newProfile;
-  } else {
-    const list = getLocalProfiles();
-    const filtered = list.filter(p => p.uid !== userId);
-    filtered.push(newProfile);
-    setLocalProfiles(filtered);
-    return newProfile;
-  }
-}
-
+return newProfile;
 // 5. Real-time Companions Snapshot
 export function subscribeCompanions(
   isDemoMode: boolean,
