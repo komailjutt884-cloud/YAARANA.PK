@@ -1,14 +1,8 @@
-import { createClient } from '@supabase/supabase-js';
+import { supabaseClient } from './supabaseClient';
 
-// Load Supabase URL and Anon Key from environment variables (Vite-prefixed)
-const supabaseUrl = (import.meta as any).env.VITE_SUPABASE_URL || '';
-const supabaseAnonKey = (import.meta as any).env.VITE_SUPABASE_ANON_KEY || '';
+export const isSupabaseConfigured = true;
 
-export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
-
-export const supabase = isSupabaseConfigured 
-  ? createClient(supabaseUrl, supabaseAnonKey) 
-  : null;
+export const supabase = supabaseClient;
 
 /**
  * DATABASE SCHEMA SQL FOR SUPABASE (Copy & paste into Supabase SQL Editor):

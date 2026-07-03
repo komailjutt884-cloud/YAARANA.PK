@@ -7,7 +7,7 @@ import MyAccount from './components/MyAccount';
 import AdminPanel from './components/AdminPanel';
 import { Heart, User, ShieldCheck, History, LogOut, Loader2, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 import { SAMPLE_COMPANIONS } from './data/sampleCompanions';
-import { isSupabaseConfigured } from './supabase';
+import { isSupabaseConfigured, supabase } from './supabase';
 import { getServicesPricing, saveServicesPricing, ServicePriceRule } from './data/services';
 
 // Import unified database operations
@@ -185,6 +185,32 @@ export default function App() {
       setActiveTab('browse');
     }
   };
+
+  // Session protection check for private views/pages
+  useEffect(() => {
+    if (isDemoMode) return;
+
+    const enforceProtection = async () => {
+      if (isSupabaseConfigured && supabase) {
+        const { data: { session } } = await supabase.auth.getSession();
+        if (!session) {
+          // If no active session exists, redirect private pages to /login
+          if (window.location.pathname !== '/login') {
+            window.history.replaceState({}, '', '/login');
+          }
+          setUser(null);
+          setProfile(null);
+        } else {
+          // If we have an active session, but are on /login, redirect to /
+          if (window.location.pathname === '/login') {
+            window.history.replaceState({}, '', '/');
+          }
+        }
+      }
+    };
+
+    enforceProtection();
+  }, [user, isDemoMode]);
 
   // 1. Auth Listener using unified adapter
   useEffect(() => {

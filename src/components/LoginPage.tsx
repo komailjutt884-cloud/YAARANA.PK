@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { signInWithGoogle, sendPhoneOTP, verifyPhoneOTP } from '../dbAdapter';
-import { User, Phone, Mail, Image as ImageIcon, Sparkles, ShieldCheck, AlertCircle } from 'lucide-react';
+import { User, Phone, Mail, Image as ImageIcon, Sparkles, ShieldCheck, AlertCircle, Lock } from 'lucide-react';
+import { supabase } from '../supabaseClient';
 
 interface LoginPageProps {
   onRegisterSubmit: (profileData: { name: string; phone: string; email: string; photoURL: string }) => Promise<void>;
@@ -10,13 +11,17 @@ interface LoginPageProps {
 }
 
 export default function LoginPage({ onRegisterSubmit, userEmail, userPhone, onDemoLogin }: LoginPageProps) {
-  const [loginMethod, setLoginMethod] = useState<'options' | 'google' | 'phone'>('options');
+  const [loginMethod, setLoginMethod] = useState<'options' | 'google' | 'phone' | 'email'>('options');
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [phoneNumber, setPhoneNumber] = useState('');
   const [verificationCode, setVerificationCode] = useState('');
   const [verificationId, setVerificationId] = useState<any>(null);
   const [isRegistering, setIsRegistering] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
 
   // Registration Form States
   const [regName, setRegName] = useState('');
@@ -64,6 +69,45 @@ export default function LoginPage({ onRegisterSubmit, userEmail, userPhone, onDe
     } catch (err: any) {
       console.error(err);
       setError("Invalid confirmation code. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEmailAuth = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!email || !password) return;
+    setLoading(true);
+    setError(null);
+    setSuccessMessage(null);
+    try {
+      if (isSignUp) {
+        const { data, error: signUpError } = await supabase.auth.signUp({
+          email,
+          password
+        });
+        if (signUpError) throw signUpError;
+        if (!data?.session) {
+          setSuccessMessage("Check your email and confirm your account before logging in.");
+          return;
+        }
+      } else {
+        const { data, error: signInError } = await supabase.auth.signInWithPassword({
+          email,
+          password
+        });
+        if (signInError) throw signInError;
+        if (!data?.session) {
+          setError("Could not establish a session. Please check your credentials.");
+          return;
+        }
+      }
+      
+      // Redirect the user to the Home page ("/") after successful login or signup
+      window.location.href = "/";
+    } catch (err: any) {
+      console.error(err);
+      setError(err.message || "Authentication failed. Please check your credentials.");
     } finally {
       setLoading(false);
     }
@@ -235,6 +279,13 @@ export default function LoginPage({ onRegisterSubmit, userEmail, userPhone, onDe
           </div>
         )}
 
+        {successMessage && (
+          <div className="bg-emerald-50 text-emerald-800 p-3 rounded-xl mb-6 flex items-center gap-2 text-xs border border-emerald-200">
+            <ShieldCheck className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>{successMessage}</span>
+          </div>
+        )}
+
         {loginMethod === 'options' && (
           <div className="space-y-4">
             <button
@@ -257,6 +308,17 @@ export default function LoginPage({ onRegisterSubmit, userEmail, userPhone, onDe
             >
               <Phone className="w-4 h-4 shrink-0" />
               <span>Continue with Phone Number</span>
+            </button>
+
+            <button
+              onClick={() => {
+                setLoginMethod('email');
+                setIsSignUp(false);
+              }}
+              className="w-full py-3.5 px-6 bg-slate-800 hover:bg-slate-700 text-white font-extrabold rounded-2xl shadow-md flex items-center justify-center gap-3 transition-all text-xs cursor-pointer"
+            >
+              <Mail className="w-4 h-4 shrink-0" />
+              <span>Continue with Email & Password</span>
             </button>
 
             {/* Developer Bypass Option */}
@@ -354,6 +416,74 @@ export default function LoginPage({ onRegisterSubmit, userEmail, userPhone, onDe
                 className="w-2/3 py-2.5 bg-brand text-white font-extrabold rounded-xl text-xs transition-all disabled:opacity-50"
               >
                 {loading ? "Verifying..." : "Verify OTP Code"}
+              </button>
+            </div>
+          </form>
+        )}
+
+        {loginMethod === 'email' && (
+          <form onSubmit={handleEmailAuth} className="space-y-4">
+            <h3 className="text-center font-black uppercase text-xs tracking-wider text-gray-700">
+              {isSignUp ? "Create a New Account" : "Sign In to Your Account"}
+            </h3>
+
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Email Address</label>
+              <div className="relative">
+                <Mail className="absolute left-3.5 top-3.5 w-4 h-4 text-gray-400" />
+                <input
+                  type="email"
+                  required
+                  placeholder="e.g. user@example.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-brand/40 focus:bg-white text-xs font-semibold text-gray-800 transition-all"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-[10px] font-black uppercase tracking-wider text-gray-400 mb-1.5">Password</label>
+              <div className="relative">
+                <Lock className="absolute left-3.5 top-3.5 w-4 h-4 text-gray-400" />
+                <input
+                  type="password"
+                  required
+                  placeholder="••••••••"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  className="w-full pl-10 pr-4 py-3 bg-gray-50 rounded-xl border border-gray-200 outline-none focus:border-brand/40 focus:bg-white text-xs font-semibold text-gray-800 transition-all"
+                />
+              </div>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setLoginMethod('options')}
+                className="w-1/3 py-2.5 px-4 bg-gray-100 hover:bg-gray-200 text-gray-600 font-bold rounded-xl text-xs transition-all cursor-pointer"
+              >
+                Back
+              </button>
+              <button
+                type="submit"
+                disabled={loading || !email || !password}
+                className="w-2/3 py-2.5 bg-brand hover:bg-brand-hover text-white font-extrabold rounded-xl text-xs transition-all disabled:opacity-50 cursor-pointer"
+              >
+                {loading ? "Processing..." : (isSignUp ? "Sign Up" : "Sign In")}
+              </button>
+            </div>
+
+            <div className="text-center mt-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignUp(!isSignUp);
+                  setError(null);
+                }}
+                className="text-[11px] text-brand hover:underline font-extrabold cursor-pointer"
+              >
+                {isSignUp ? "Already have an account? Sign In" : "Don't have an account? Sign Up"}
               </button>
             </div>
           </form>
