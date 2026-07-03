@@ -7,7 +7,9 @@ export const supabase = supabaseClient;
 /**
  * DATABASE SCHEMA SQL FOR SUPABASE (Copy & paste into Supabase SQL Editor):
  * 
+-- ============================================================================
 -- 1. PROFILES TABLE
+-- ============================================================================
 CREATE TABLE IF NOT EXISTS public.profiles (
   uid text PRIMARY KEY,
   email text NOT NULL,
@@ -19,18 +21,47 @@ CREATE TABLE IF NOT EXISTS public.profiles (
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Enable RLS for profiles
+-- Enable Row Level Security (RLS)
 ALTER TABLE public.profiles ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow public read access to profiles" ON public.profiles FOR SELECT USING (true);
-CREATE POLICY "Allow users to insert/update their own profile" ON public.profiles FOR ALL USING (auth.uid()::text = uid);
 
+-- Profiles RLS Policies
+DROP POLICY IF EXISTS "Allow users to view their own profile" ON public.profiles;
+CREATE POLICY "Allow users to view their own profile" 
+  ON public.profiles FOR SELECT 
+  USING (auth.uid()::text = uid);
+
+DROP POLICY IF EXISTS "Allow admins to view all profiles" ON public.profiles;
+CREATE POLICY "Allow admins to view all profiles" 
+  ON public.profiles FOR SELECT 
+  USING ((auth.jwt() ->> 'email') = 'komailjutt884@gmail.com');
+
+DROP POLICY IF EXISTS "Allow users to insert their own profile" ON public.profiles;
+CREATE POLICY "Allow users to insert their own profile" 
+  ON public.profiles FOR INSERT 
+  WITH CHECK (auth.uid()::text = uid);
+
+DROP POLICY IF EXISTS "Allow users to update their own profile" ON public.profiles;
+CREATE POLICY "Allow users to update their own profile" 
+  ON public.profiles FOR UPDATE 
+  USING (auth.uid()::text = uid)
+  WITH CHECK (auth.uid()::text = uid);
+
+DROP POLICY IF EXISTS "Allow admins to update any profile status" ON public.profiles;
+CREATE POLICY "Allow admins to update any profile status" 
+  ON public.profiles FOR UPDATE 
+  USING ((auth.jwt() ->> 'email') = 'komailjutt884@gmail.com');
+
+
+-- ============================================================================
 -- 2. COMPANIONS TABLE
+-- ============================================================================
 CREATE TABLE IF NOT EXISTS public.companions (
   id text PRIMARY KEY,
   name text NOT NULL,
   age integer,
   gender text,
   location text,
+  city text,
   photo_url text,
   rate numeric,
   services text[], -- Array of services
@@ -41,12 +72,34 @@ CREATE TABLE IF NOT EXISTS public.companions (
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Enable RLS for companions
+-- Enable Row Level Security (RLS)
 ALTER TABLE public.companions ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow public read access to companions" ON public.companions FOR SELECT USING (true);
-CREATE POLICY "Allow write access to companions for all users" ON public.companions FOR ALL USING (true);
 
+-- Companions RLS Policies
+DROP POLICY IF EXISTS "Allow public read access to companions" ON public.companions;
+CREATE POLICY "Allow public read access to companions" 
+  ON public.companions FOR SELECT 
+  USING (true);
+
+DROP POLICY IF EXISTS "Allow admins to insert companions" ON public.companions;
+CREATE POLICY "Allow admins to insert companions" 
+  ON public.companions FOR INSERT 
+  WITH CHECK ((auth.jwt() ->> 'email') = 'komailjutt884@gmail.com');
+
+DROP POLICY IF EXISTS "Allow admins to update companions" ON public.companions;
+CREATE POLICY "Allow admins to update companions" 
+  ON public.companions FOR UPDATE 
+  USING ((auth.jwt() ->> 'email') = 'komailjutt884@gmail.com');
+
+DROP POLICY IF EXISTS "Allow admins to delete companions" ON public.companions;
+CREATE POLICY "Allow admins to delete companions" 
+  ON public.companions FOR DELETE 
+  USING ((auth.jwt() ->> 'email') = 'komailjutt884@gmail.com');
+
+
+-- ============================================================================
 -- 3. BOOKINGS TABLE
+-- ============================================================================
 CREATE TABLE IF NOT EXISTS public.bookings (
   id text PRIMARY KEY,
   user_id text NOT NULL,
@@ -66,13 +119,34 @@ CREATE TABLE IF NOT EXISTS public.bookings (
   created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL
 );
 
--- Enable RLS for bookings
+-- Enable Row Level Security (RLS)
 ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
-CREATE POLICY "Allow all actions on bookings" ON public.bookings FOR ALL USING (true);
 
--- Seed initial companions (optional)
-INSERT INTO public.companions (id, name, age, gender, location, photo_url, rate, services, about, availability, rating, reviews_count) VALUES
-('comp_1', 'Aliza Sheikh', 23, 'Female', 'Lahore, Pakistan', 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=400', 3000, ARRAY['Dining', 'Movies', 'Travel', 'Spending a Day/Night'], 'Professional host and brilliant conversationalist. Loves exploring Lahore coffee spots and food streets.', 'Available', 4.9, 28),
-('comp_2', 'Hamza Butt', 25, 'Male', 'Islamabad, Pakistan', 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&q=80&w=400', 2500, ARRAY['Movies', 'Travel', 'Call Companionship'], 'Nature explorer, photographer, and trekking enthusiast. Great company for long drives and outdoor trips around Margalla Hills.', 'Available', 4.8, 19),
-('comp_3', 'Zara Khan', 24, 'Female', 'Karachi, Pakistan', 'https://images.unsplash.com/photo-1517841905240-472988babdf9?auto=format&fit=crop&q=80&w=400', 3500, ARRAY['Dining', 'Movies', 'Spending a Day/Night', 'Call Companionship'], 'Fashion designer and gourmet foodie. Let me guide you to the premium seaside dining and entertainment spots in Clifton/DHA.', 'Busy', 5.0, 34);
+-- Bookings RLS Policies
+DROP POLICY IF EXISTS "Allow users and admins to select bookings" ON public.bookings;
+CREATE POLICY "Allow users and admins to select bookings" 
+  ON public.bookings FOR SELECT 
+  USING (auth.uid()::text = user_id OR (auth.jwt() ->> 'email') = 'komailjutt884@gmail.com');
+
+DROP POLICY IF EXISTS "Allow users to insert their own bookings" ON public.bookings;
+CREATE POLICY "Allow users to insert their own bookings" 
+  ON public.bookings FOR INSERT 
+  WITH CHECK (auth.uid()::text = user_id);
+
+DROP POLICY IF EXISTS "Allow users and admins to update bookings" ON public.bookings;
+CREATE POLICY "Allow users and admins to update bookings" 
+  ON public.bookings FOR UPDATE 
+  USING (auth.uid()::text = user_id OR (auth.jwt() ->> 'email') = 'komailjutt884@gmail.com');
+
+DROP POLICY IF EXISTS "Allow admins to delete bookings" ON public.bookings;
+CREATE POLICY "Allow admins to delete bookings" 
+  ON public.bookings FOR DELETE 
+  USING ((auth.jwt() ->> 'email') = 'komailjutt884@gmail.com');
+
+
+-- ============================================================================
+-- SEED INITIAL DATA
+-- ============================================================================
+-- (No initial companions are seeded; the database starts empty)
  */
+
