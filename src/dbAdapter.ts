@@ -390,7 +390,7 @@ export async function saveProfile(
   };
 
   if (isDemoMode) {
-    return newProfile;
+    return newProfile;}
   }
 
   if (isSupabaseConfigured && supabase) {
