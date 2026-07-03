@@ -301,9 +301,29 @@ export async function saveProfile(
 
   if (isSupabaseConfigured && supabase) {
     const dbPayload = mapProfileToDb(newProfile);
-    const { error } = await supabase
+    
+    // Check if profile already exists
+    const { data: existing } = await supabase
       .from('profiles')
-      .upsert(dbPayload);
+      .select('uid')
+      .eq('uid', userId)
+      .maybeSingle();
+
+    let error;
+    if (existing) {
+      // Update existing profile
+      const { error: updateError } = await supabase
+        .from('profiles')
+        .update(dbPayload)
+        .eq('uid', userId);
+      error = updateError;
+    } else {
+      // Insert new profile
+      const { error: insertError } = await supabase
+        .from('profiles')
+        .insert(dbPayload);
+      error = insertError;
+    }
 
     if (error) throw error;
     return newProfile;

@@ -194,17 +194,8 @@ export default function App() {
       if (isSupabaseConfigured && supabase) {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-          // If no active session exists, redirect private pages to /login
-          if (window.location.pathname !== '/login') {
-            window.history.replaceState({}, '', '/login');
-          }
           setUser(null);
           setProfile(null);
-        } else {
-          // If we have an active session, but are on /login, redirect to /
-          if (window.location.pathname === '/login') {
-            window.history.replaceState({}, '', '/');
-          }
         }
       }
     };
@@ -317,6 +308,7 @@ export default function App() {
       setProfile(saved);
     } catch (err) {
       console.error("Register submit error:", err);
+      throw err;
     }
   };
 
@@ -364,6 +356,7 @@ export default function App() {
       setCompanions(list);
     } catch (err) {
       console.error("Add companion error:", err);
+      throw err;
     }
   };
 
@@ -379,6 +372,7 @@ export default function App() {
       setCompanions(list);
     } catch (err) {
       console.error("Delete companion error:", err);
+      throw err;
     }
   };
 
@@ -393,6 +387,7 @@ export default function App() {
       setCompanions(list);
     } catch (err) {
       console.error("Clear all companions error:", err);
+      throw err;
     }
   };
 
