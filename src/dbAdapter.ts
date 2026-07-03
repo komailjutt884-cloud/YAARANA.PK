@@ -3,6 +3,96 @@ import { UserProfile, Companion, Booking } from './types';
 import { SAMPLE_COMPANIONS } from './data/sampleCompanions';
 
 // ============================================================================
+// SUPABASE STORAGE UTILITY FUNCTIONS & PATH REPAIR
+// ============================================================================
+
+export function getStoragePathFromUrl(url: string | null | undefined): string {
+  if (!url) return '';
+  if (url.includes('/storage/v1/object/sign/app-files/') || url.includes('/storage/v1/object/public/app-files/')) {
+    try {
+      const parts = url.split('/app-files/');
+      if (parts.length > 1) {
+        const pathPart = parts[1].split('?')[0];
+        return decodeURIComponent(pathPart);
+      }
+    } catch (e) {
+      console.error("Failed to parse storage path from URL:", url, e);
+    }
+  }
+  return url;
+}
+
+export async function getSignedUrlIfNeeded(urlOrPath: string | null | undefined): Promise<string> {
+  if (!urlOrPath) return '';
+  if (urlOrPath.startsWith('http://') || urlOrPath.startsWith('https://') || urlOrPath.startsWith('data:')) {
+    return urlOrPath;
+  }
+  if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error } = await supabase.storage
+        .from('app-files')
+        .createSignedUrl(urlOrPath, 86400); // 1 day
+      if (error) {
+        console.error("Error creating signed URL for:", urlOrPath, error);
+        return '';
+      }
+      return data?.signedUrl || '';
+    } catch (err) {
+      console.error("Failed to sign URL:", err);
+      return '';
+    }
+  }
+  return urlOrPath;
+}
+
+export async function uploadFile(
+  file: File,
+  featureName: string,
+  itemId: string
+): Promise<string> {
+  if (isSupabaseConfigured && supabase) {
+    const { data: { user } } = await supabase.auth.getUser();
+    const userId = user?.id || 'anonymous';
+    
+    const extension = file.name.split('.').pop() || 'png';
+    const uuid = 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+      const r = Math.random() * 16 | 0;
+      const v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
+    
+    const filePath = `${userId}/${featureName}/${itemId}/${uuid}.${extension}`;
+    
+    const { error } = await supabase.storage
+      .from('app-files')
+      .upload(filePath, file, {
+        cacheControl: '3600',
+        upsert: true
+      });
+      
+    if (error) {
+      console.error("Storage upload error:", error);
+      throw error;
+    }
+    
+    return filePath;
+  } else {
+    throw new Error("Supabase is not configured.");
+  }
+}
+
+export async function deleteFileFromStorage(filePath: string): Promise<void> {
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.storage
+      .from('app-files')
+      .remove([filePath]);
+    if (error) {
+      console.error("Failed to delete file from Storage:", filePath, error);
+    }
+  }
+}
+
+// ============================================================================
 // SUPABASE FIELD MAPPERS (camelCase <-> snake_case)
 // ============================================================================
 
@@ -25,7 +115,7 @@ function mapProfileToDb(profile: any) {
     email: profile.email,
     phone: profile.phone,
     name: profile.name,
-    photo_url: profile.photoURL,
+    photo_url: getStoragePathFromUrl(profile.photoURL),
     status: profile.status,
     role: profile.role,
     created_at: profile.createdAt || new Date().toISOString()
@@ -59,7 +149,7 @@ function mapCompanionToDb(comp: any) {
     gender: comp.gender,
     location: comp.location,
     city: comp.city || comp.location || '',
-    photo_url: comp.photoUrl,
+    photo_url: getStoragePathFromUrl(comp.photoUrl),
     rate: comp.rate,
     services: comp.services,
     about: comp.about,
@@ -99,7 +189,7 @@ function mapBookingToDb(booking: any) {
     user_name: booking.userName,
     companion_id: booking.companionId,
     companion_name: booking.companionName,
-    companion_photo_url: booking.companionPhotoUrl,
+    companion_photo_url: getStoragePathFromUrl(booking.companionPhotoUrl),
     activity: booking.activity,
     duration: booking.duration,
     total_amount: booking.totalAmount,
@@ -264,7 +354,9 @@ export async function getProfile(isDemoMode: boolean, user: any): Promise<UserPr
       .single();
 
     if (error || !data) return null;
-    return mapProfileFromDb(data);
+    const profile = mapProfileFromDb(data);
+    profile.photoURL = await getSignedUrlIfNeeded(profile.photoURL);
+    return profile;
   } else {
     const list = getLocalProfiles();
     const profile = list.find(p => p.uid === userId);
@@ -350,9 +442,16 @@ export function subscribeCompanions(
     supabase.from('companions')
       .select('*')
       .order('created_at', { ascending: false })
-      .then(({ data }) => {
+      .then(async ({ data }) => {
         if (data) {
-          callback(data.map(mapCompanionFromDb));
+          const comps = data.map(mapCompanionFromDb);
+          const signed = await Promise.all(
+            comps.map(async (c) => ({
+              ...c,
+              photoUrl: await getSignedUrlIfNeeded(c.photoUrl)
+            }))
+          );
+          callback(signed);
         }
       });
 
@@ -366,8 +465,17 @@ export function subscribeCompanions(
           supabase.from('companions')
             .select('*')
             .order('created_at', { ascending: false })
-            .then(({ data }) => {
-              if (data) callback(data.map(mapCompanionFromDb));
+            .then(async ({ data }) => {
+              if (data) {
+                const comps = data.map(mapCompanionFromDb);
+                const signed = await Promise.all(
+                  comps.map(async (c) => ({
+                    ...c,
+                    photoUrl: await getSignedUrlIfNeeded(c.photoUrl)
+                  }))
+                );
+                callback(signed);
+              }
             });
         }
       )
@@ -410,9 +518,16 @@ export function subscribeBookings(
       }
       
       queryBuilder.order('created_at', { ascending: false })
-        .then(({ data }) => {
+        .then(async ({ data }) => {
           if (data) {
-            callback(data.map(mapBookingFromDb));
+            const list = data.map(mapBookingFromDb);
+            const signed = await Promise.all(
+              list.map(async (b) => ({
+                ...b,
+                companionPhotoUrl: await getSignedUrlIfNeeded(b.companionPhotoUrl)
+              }))
+            );
+            callback(signed);
           }
         });
     };
@@ -469,9 +584,16 @@ export function subscribeUsersQueue(
       supabase.from('profiles')
         .select('*')
         .order('created_at', { ascending: false })
-        .then(({ data }) => {
+        .then(async ({ data }) => {
           if (data) {
-            callback(data.map(mapProfileFromDb));
+            const list = data.map(mapProfileFromDb);
+            const signed = await Promise.all(
+              list.map(async (p) => ({
+                ...p,
+                photoURL: await getSignedUrlIfNeeded(p.photoURL)
+              }))
+            );
+            callback(signed);
           }
         });
     };
@@ -559,6 +681,23 @@ export async function deleteCompanion(isDemoMode: boolean, companionId: string):
   if (isDemoMode) return;
 
   if (isSupabaseConfigured && supabase) {
+    try {
+      const { data, error: fetchErr } = await supabase
+        .from('companions')
+        .select('photo_url')
+        .eq('id', companionId)
+        .single();
+        
+      if (!fetchErr && data && data.photo_url) {
+        const storagePath = getStoragePathFromUrl(data.photo_url);
+        if (storagePath && !storagePath.startsWith('http://') && !storagePath.startsWith('https://')) {
+          await deleteFileFromStorage(storagePath);
+        }
+      }
+    } catch (err) {
+      console.error("Error deleting companion storage file:", err);
+    }
+
     await supabase.from('companions').delete().eq('id', companionId);
   } else {
     const list = getLocalCompanions();
@@ -592,7 +731,14 @@ export async function getCompanionsList(isDemoMode: boolean): Promise<Companion[
   if (isSupabaseConfigured && supabase) {
     const { data, error } = await supabase.from('companions').select('*').order('created_at', { ascending: false });
     if (error) throw error;
-    return (data || []).map(mapCompanionFromDb);
+    const comps = (data || []).map(mapCompanionFromDb);
+    const signed = await Promise.all(
+      comps.map(async (c) => ({
+        ...c,
+        photoUrl: await getSignedUrlIfNeeded(c.photoUrl)
+      }))
+    );
+    return signed;
   } else {
     return getLocalCompanions();
   }

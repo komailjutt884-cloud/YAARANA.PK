@@ -28,6 +28,29 @@ export default function LoginPage({ onRegisterSubmit, userEmail, userPhone, onDe
   const [regPhone, setRegPhone] = useState(userPhone || '');
   const [regEmail, setRegEmail] = useState(userEmail || '');
   const [regPhoto, setRegPhoto] = useState('https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&q=80&w=200');
+  const [uploading, setUploading] = useState(false);
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploading(true);
+    setError(null);
+    try {
+      const { uploadFile, getSignedUrlIfNeeded } = await import('../dbAdapter');
+      const { data: { user } } = await supabase.auth.getUser();
+      const uid = user?.id || 'new_user';
+      
+      const storagePath = await uploadFile(file, 'profiles', uid);
+      const signedUrl = await getSignedUrlIfNeeded(storagePath);
+      setRegPhoto(signedUrl);
+    } catch (err: any) {
+      console.error("File upload failed:", err);
+      setError("Failed to upload image. Please try again.");
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const handleGoogleLogin = async () => {
     setLoading(true);
@@ -226,6 +249,19 @@ export default function LoginPage({ onRegisterSubmit, userEmail, userPhone, onDe
                 onChange={(e) => setRegPhoto(e.target.value)}
                 className="w-full bg-transparent text-xs text-gray-650 outline-none"
               />
+            </div>
+            <div className="mt-3 flex items-center justify-between bg-gray-50 p-2.5 rounded-xl border border-gray-100">
+              <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Or upload custom avatar</span>
+              <label className="cursor-pointer bg-slate-900 hover:bg-slate-800 text-white font-black text-[9px] uppercase px-3 py-1.5 rounded-lg shadow-sm transition-all shrink-0">
+                {uploading ? "Uploading..." : "Choose File"}
+                <input
+                  type="file"
+                  accept="image/*"
+                  disabled={uploading}
+                  onChange={handleFileChange}
+                  className="hidden"
+                />
+              </label>
             </div>
           </div>
 

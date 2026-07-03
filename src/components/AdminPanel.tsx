@@ -48,6 +48,27 @@ export default function AdminPanel({
   const [about, setAbout] = useState('');
   const [selectedServices, setSelectedServices] = useState<string[]>(["Call Companionship"]);
 
+  const [uploadingPhoto, setUploadingPhoto] = useState(false);
+
+  const handleCompanionPhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setUploadingPhoto(true);
+    try {
+      const { uploadFile, getSignedUrlIfNeeded } = await import('../dbAdapter');
+      const tempId = `temp_comp_${Date.now()}`;
+      const storagePath = await uploadFile(file, 'companions', tempId);
+      const signedUrl = await getSignedUrlIfNeeded(storagePath);
+      setPhotoUrl(signedUrl);
+    } catch (err) {
+      console.error("Companion photo upload failed:", err);
+      alert("Failed to upload companion photo.");
+    } finally {
+      setUploadingPhoto(false);
+    }
+  };
+
   const [activeTab, setActiveTab] = useState<'users' | 'bookings' | 'companions' | 'add_companion' | 'pricing'>('users');
   const [submitting, setSubmitting] = useState(false);
 
@@ -548,14 +569,29 @@ export default function AdminPanel({
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Profile Photo URL</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="Paste direct Unsplash/image link..."
-                    value={photoUrl}
-                    onChange={(e) => setPhotoUrl(e.target.value)}
-                    className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 outline-none text-gray-700 focus:bg-white focus:border-brand/40"
-                  />
+                  <div className="space-y-2">
+                    <input
+                      type="text"
+                      required
+                      placeholder="Paste direct Unsplash/image link..."
+                      value={photoUrl}
+                      onChange={(e) => setPhotoUrl(e.target.value)}
+                      className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 outline-none text-gray-700 focus:bg-white focus:border-brand/40"
+                    />
+                    <div className="flex items-center justify-between bg-gray-50 p-2.5 rounded-xl border border-gray-100">
+                      <span className="text-[10px] text-gray-400 font-bold uppercase tracking-wider">Or upload photo</span>
+                      <label className="cursor-pointer bg-slate-900 hover:bg-slate-800 text-white font-black text-[9px] uppercase px-3 py-1.5 rounded-lg shadow-sm transition-all shrink-0">
+                        {uploadingPhoto ? "Uploading..." : "Choose File"}
+                        <input
+                          type="file"
+                          accept="image/*"
+                          disabled={uploadingPhoto}
+                          onChange={handleCompanionPhotoUpload}
+                          className="hidden"
+                        />
+                      </label>
+                    </div>
+                  </div>
                 </div>
 
                 <div>
