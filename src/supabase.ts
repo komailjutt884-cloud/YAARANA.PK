@@ -33,7 +33,10 @@ CREATE POLICY "Allow users to view their own profile"
 DROP POLICY IF EXISTS "Allow admins to view all profiles" ON public.profiles;
 CREATE POLICY "Allow admins to view all profiles" 
   ON public.profiles FOR SELECT 
-  USING ((auth.jwt() ->> 'email') = 'komailjutt884@gmail.com');
+  USING (
+    (auth.jwt() ->> 'email') = 'komailjutt884@gmail.com' OR 
+    (SELECT role FROM public.profiles WHERE uid = auth.uid()::text) = 'admin'
+  );
 
 DROP POLICY IF EXISTS "Allow users to insert their own profile" ON public.profiles;
 CREATE POLICY "Allow users to insert their own profile" 
@@ -49,7 +52,10 @@ CREATE POLICY "Allow users to update their own profile"
 DROP POLICY IF EXISTS "Allow admins to update any profile status" ON public.profiles;
 CREATE POLICY "Allow admins to update any profile status" 
   ON public.profiles FOR UPDATE 
-  USING ((auth.jwt() ->> 'email') = 'komailjutt884@gmail.com');
+  USING (
+    (auth.jwt() ->> 'email') = 'komailjutt884@gmail.com' OR 
+    (SELECT role FROM public.profiles WHERE uid = auth.uid()::text) = 'admin'
+  );
 
 
 -- ============================================================================
@@ -84,17 +90,26 @@ CREATE POLICY "Allow public read access to companions"
 DROP POLICY IF EXISTS "Allow admins to insert companions" ON public.companions;
 CREATE POLICY "Allow admins to insert companions" 
   ON public.companions FOR INSERT 
-  WITH CHECK ((auth.jwt() ->> 'email') = 'komailjutt884@gmail.com');
+  WITH CHECK (
+    (auth.jwt() ->> 'email') = 'komailjutt884@gmail.com' OR 
+    EXISTS (SELECT 1 FROM public.profiles WHERE uid = auth.uid()::text AND role = 'admin')
+  );
 
 DROP POLICY IF EXISTS "Allow admins to update companions" ON public.companions;
 CREATE POLICY "Allow admins to update companions" 
   ON public.companions FOR UPDATE 
-  USING ((auth.jwt() ->> 'email') = 'komailjutt884@gmail.com');
+  USING (
+    (auth.jwt() ->> 'email') = 'komailjutt884@gmail.com' OR 
+    EXISTS (SELECT 1 FROM public.profiles WHERE uid = auth.uid()::text AND role = 'admin')
+  );
 
 DROP POLICY IF EXISTS "Allow admins to delete companions" ON public.companions;
 CREATE POLICY "Allow admins to delete companions" 
   ON public.companions FOR DELETE 
-  USING ((auth.jwt() ->> 'email') = 'komailjutt884@gmail.com');
+  USING (
+    (auth.jwt() ->> 'email') = 'komailjutt884@gmail.com' OR 
+    EXISTS (SELECT 1 FROM public.profiles WHERE uid = auth.uid()::text AND role = 'admin')
+  );
 
 
 -- ============================================================================
@@ -126,7 +141,11 @@ ALTER TABLE public.bookings ENABLE ROW LEVEL SECURITY;
 DROP POLICY IF EXISTS "Allow users and admins to select bookings" ON public.bookings;
 CREATE POLICY "Allow users and admins to select bookings" 
   ON public.bookings FOR SELECT 
-  USING (auth.uid()::text = user_id OR (auth.jwt() ->> 'email') = 'komailjutt884@gmail.com');
+  USING (
+    auth.uid()::text = user_id OR 
+    (auth.jwt() ->> 'email') = 'komailjutt884@gmail.com' OR
+    EXISTS (SELECT 1 FROM public.profiles WHERE uid = auth.uid()::text AND role = 'admin')
+  );
 
 DROP POLICY IF EXISTS "Allow users to insert their own bookings" ON public.bookings;
 CREATE POLICY "Allow users to insert their own bookings" 
@@ -136,12 +155,19 @@ CREATE POLICY "Allow users to insert their own bookings"
 DROP POLICY IF EXISTS "Allow users and admins to update bookings" ON public.bookings;
 CREATE POLICY "Allow users and admins to update bookings" 
   ON public.bookings FOR UPDATE 
-  USING (auth.uid()::text = user_id OR (auth.jwt() ->> 'email') = 'komailjutt884@gmail.com');
+  USING (
+    auth.uid()::text = user_id OR 
+    (auth.jwt() ->> 'email') = 'komailjutt884@gmail.com' OR
+    EXISTS (SELECT 1 FROM public.profiles WHERE uid = auth.uid()::text AND role = 'admin')
+  );
 
 DROP POLICY IF EXISTS "Allow admins to delete bookings" ON public.bookings;
 CREATE POLICY "Allow admins to delete bookings" 
   ON public.bookings FOR DELETE 
-  USING ((auth.jwt() ->> 'email') = 'komailjutt884@gmail.com');
+  USING (
+    (auth.jwt() ->> 'email') = 'komailjutt884@gmail.com' OR
+    EXISTS (SELECT 1 FROM public.profiles WHERE uid = auth.uid()::text AND role = 'admin')
+  );
 
 
 -- ============================================================================

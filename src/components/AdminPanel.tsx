@@ -76,7 +76,7 @@ export default function AdminPanel({
     alert("Services pricing updated successfully! These rates will be applied globally to user package calculation displays.");
   };
 
-  const isOwner = profile?.email?.toLowerCase() === 'komailjutt884@gmail.com' || profile?.email?.toLowerCase() === 'demo@yaarana.pk';
+  const isOwner = profile?.role === 'admin' || profile?.email?.toLowerCase() === 'komailjutt884@gmail.com' || profile?.email?.toLowerCase() === 'demo@yaarana.pk';
 
   // Available companion services
   const SERVICE_OPTIONS = [
@@ -99,7 +99,7 @@ export default function AdminPanel({
   const handleSubmitCompanion = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!isOwner) {
-      alert("Access Denied: Only the owner (komailjutt884@gmail.com) can add companions.");
+      alert("Access Denied: Only platform administrators can add companions.");
       return;
     }
     if (!name.trim() || !about.trim()) {
@@ -463,9 +463,9 @@ export default function AdminPanel({
             <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto text-amber-500">
               <ShieldAlert className="w-8 h-8" />
             </div>
-            <h3 className="text-xl font-black text-gray-900 font-display">Owner Access Only</h3>
+            <h3 className="text-xl font-black text-gray-900 font-display">Administrator Access Only</h3>
             <p className="text-xs text-gray-500 max-w-md mx-auto leading-relaxed">
-              The registration of new companion profiles is restricted strictly to the primary owner account (<strong>komailjutt884@gmail.com</strong>).
+              The registration of new companion profiles is restricted strictly to verified platform administrator accounts.
             </p>
           </div>
         ) : (
