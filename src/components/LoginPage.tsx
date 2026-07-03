@@ -33,10 +33,16 @@ export default function LoginPage({ onRegisterSubmit, userEmail, userPhone, onDe
     setLoading(true);
     setError(null);
     try {
-      await signInWithGoogle(false);
+      const { error } = await supabase.auth.signInWithOAuth({
+        provider: 'google',
+        options: {
+          redirectTo: window.location.origin
+        }
+      });
+      if (error) throw error;
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Failed to sign in with Google.");
+      setError(safeGetErrorMessage(err, "Failed to sign in with Google."));
     } finally {
       setLoading(false);
     }
@@ -53,7 +59,7 @@ export default function LoginPage({ onRegisterSubmit, userEmail, userPhone, onDe
       setVerificationId(resultObj);
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Failed to send SMS code. Make sure format is correct (+923xxxxxxxxx).");
+      setError(safeGetErrorMessage(err, "Failed to send SMS code. Make sure format is correct (+923xxxxxxxxx)."));
     } finally {
       setLoading(false);
     }
@@ -72,6 +78,32 @@ export default function LoginPage({ onRegisterSubmit, userEmail, userPhone, onDe
     } finally {
       setLoading(false);
     }
+  };
+
+  const safeGetErrorMessage = (err: any, fallback: string): string => {
+    if (!err) return fallback;
+    if (typeof err === 'string') return err;
+    if (err.message) {
+      if (typeof err.message === 'string') return err.message;
+      try {
+        return JSON.stringify(err.message);
+      } catch (_) {}
+    }
+    if (err.error_description && typeof err.error_description === 'string') return err.error_description;
+    if (err.error) {
+      if (typeof err.error === 'string') return err.error;
+      try {
+        return JSON.stringify(err.error);
+      } catch (_) {}
+    }
+    if (err.msg && typeof err.msg === 'string') return err.msg;
+    
+    try {
+      const str = JSON.stringify(err);
+      if (str && str !== '{}') return str;
+    } catch (_) {}
+    
+    return err.toString ? err.toString() : fallback;
   };
 
   const handleEmailAuth = async (e: React.FormEvent) => {
@@ -107,7 +139,7 @@ export default function LoginPage({ onRegisterSubmit, userEmail, userPhone, onDe
       window.location.href = "/";
     } catch (err: any) {
       console.error(err);
-      setError(err.message || "Authentication failed. Please check your credentials.");
+      setError(safeGetErrorMessage(err, "Authentication failed. Please check your credentials."));
     } finally {
       setLoading(false);
     }
@@ -137,7 +169,7 @@ export default function LoginPage({ onRegisterSubmit, userEmail, userPhone, onDe
         photoURL: regPhoto
       });
     } catch (err: any) {
-      setError(err.message || "Registration failed");
+      setError(safeGetErrorMessage(err, "Registration failed"));
     } finally {
       setLoading(false);
     }
