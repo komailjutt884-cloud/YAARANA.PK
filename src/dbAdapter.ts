@@ -306,7 +306,9 @@ export function subscribeAuth(isDemoMode: boolean, callback: (user: any) => void
   if (isSupabaseConfigured && supabase) {
     // 1. Set initial user immediately
     supabase.auth.getSession().then(({ data: { session } }) => {
-      callback(session?.user || null);
+      if (session?.user) {
+  callback(session.user);
+}
     });
 
     // 2. Subscribe to auth events
