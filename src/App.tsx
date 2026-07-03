@@ -233,8 +233,8 @@ export default function App() {
               setProfile(fetchedProfile);
             }
           } else {
-            // Wait for user registration form input
-            setProfile(null);
+            // } else {     console.log("} else {     console.log("} else {     console.log("Profile not ready yet."); }."); }."); }
+           
           }
         } catch (err) {
           console.error("Error reading profile:", err);
