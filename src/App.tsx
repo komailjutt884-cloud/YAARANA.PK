@@ -194,8 +194,8 @@ export default function App() {
       if (isSupabaseConfigured && supabase) {
         const { data: { session } } = await supabase.auth.getSession();
         if (!session) {
-          setUser(null);
-          setProfile(null);
+         console.log("Session not ready yet, waiting...");
+return;
         }
       }
     };
