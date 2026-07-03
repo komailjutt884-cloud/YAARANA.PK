@@ -351,7 +351,7 @@ export async function getProfile(isDemoMode: boolean, user: any): Promise<UserPr
       .from('profiles')
       .select('*')
       .eq('uid', userId)
-      .single();
+      .maybeSingle();
 
     if (error || !data) return null;
     const profile = mapProfileFromDb(data);
@@ -687,7 +687,7 @@ export async function deleteCompanion(isDemoMode: boolean, companionId: string):
         .from('companions')
         .select('photo_url')
         .eq('id', companionId)
-        .single();
+       .maybeSingle()
         
       if (!fetchErr && data && data.photo_url) {
         const storagePath = getStoragePathFromUrl(data.photo_url);
