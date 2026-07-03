@@ -39,6 +39,7 @@ function mapCompanionFromDb(row: any): Companion {
     age: Number(row.age || 0),
     gender: row.gender || '',
     location: row.location || '',
+    city: row.city || row.location || '',
     photoUrl: row.photo_url || '',
     rate: Number(row.rate || 0),
     services: row.services || [],
@@ -57,6 +58,7 @@ function mapCompanionToDb(comp: any) {
     age: comp.age,
     gender: comp.gender,
     location: comp.location,
+    city: comp.city || comp.location || '',
     photo_url: comp.photoUrl,
     rate: comp.rate,
     services: comp.services,
@@ -154,12 +156,13 @@ function setLocalUser(user: any) {
 function getLocalCompanions(): Companion[] {
   const data = localStorage.getItem('yaarana_companions');
   if (!data) {
-    const list: Companion[] = SAMPLE_COMPANIONS.map((c, i) => ({
+    const list: Companion[] = (SAMPLE_COMPANIONS as Companion[]).map((c, i) => ({
       id: `comp_${i + 1}`,
       name: c.name,
       age: c.age,
       gender: c.gender,
       location: c.location,
+      city: c.city || c.location,
       photoUrl: c.photoUrl,
       rate: c.rate,
       services: c.services,
@@ -541,6 +544,37 @@ export async function deleteCompanion(isDemoMode: boolean, companionId: string):
     const list = getLocalCompanions();
     const updated = list.filter(c => c.id !== companionId);
     setLocalCompanions(updated);
+  }
+}
+
+export async function clearAllCompanions(isDemoMode: boolean): Promise<void> {
+  if (isDemoMode) return;
+
+  if (isSupabaseConfigured && supabase) {
+    const { error } = await supabase.from('companions').delete().neq('id', '');
+    if (error) throw error;
+  } else {
+    setLocalCompanions([]);
+  }
+}
+
+export async function getCompanionsList(isDemoMode: boolean): Promise<Companion[]> {
+  if (isDemoMode) {
+    const savedComps = localStorage.getItem('yaarana_demo_companions');
+    return savedComps 
+      ? (JSON.parse(savedComps) as Companion[]) 
+      : (SAMPLE_COMPANIONS as Companion[]).map((c, i) => ({ 
+          id: `comp_${i + 1}`, 
+          ...c, 
+          createdAt: new Date().toISOString() 
+        }));
+  }
+  if (isSupabaseConfigured && supabase) {
+    const { data, error } = await supabase.from('companions').select('*').order('created_at', { ascending: false });
+    if (error) throw error;
+    return (data || []).map(mapCompanionFromDb);
+  } else {
+    return getLocalCompanions();
   }
 }
 

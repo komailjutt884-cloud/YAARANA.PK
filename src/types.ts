@@ -18,6 +18,7 @@ export interface Companion {
   age: number;
   gender: string;
   location: string;
+  city: string;
   photoUrl: string;
   rate: number; // PKR per hour
   services: string[]; // e.g., ["Dining", "Movies", "Travel", "Spending a Day/Night", "Call Companionship"]

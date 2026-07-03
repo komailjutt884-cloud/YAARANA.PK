@@ -1,11 +1,17 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { UserProfile, Companion, Booking } from '../types';
-import { Plus, Users, ShieldAlert, Check, X, ShieldCheck, Heart, Trash2, MapPin, DollarSign, ListCollapse } from 'lucide-react';
+import { Plus, Users, ShieldAlert, Check, X, ShieldCheck, Heart, Trash2, MapPin, DollarSign, ListCollapse, Settings, Tag, Save } from 'lucide-react';
+import { PAKISTAN_CITIES } from '../data/pakistanCities';
+import { ServicePriceRule } from '../data/services';
 
 interface AdminPanelProps {
+  profile: UserProfile | null;
   usersQueue: UserProfile[];
   companions: Companion[];
   bookings: Booking[];
+  servicesPricing: Record<string, ServicePriceRule>;
+  onUpdateServicesPricing: (newPricing: Record<string, ServicePriceRule>) => void;
+  onClearAllCompanions: () => Promise<void>;
   onApproveUser: (uid: string) => Promise<void>;
   onRejectUser: (uid: string) => Promise<void>;
   onAddCompanion: (companionData: Omit<Companion, 'id' | 'createdAt'>) => Promise<void>;
@@ -16,9 +22,13 @@ interface AdminPanelProps {
 }
 
 export default function AdminPanel({
+  profile,
   usersQueue,
   companions,
   bookings,
+  servicesPricing,
+  onUpdateServicesPricing,
+  onClearAllCompanions,
   onApproveUser,
   onRejectUser,
   onAddCompanion,
@@ -32,13 +42,41 @@ export default function AdminPanel({
   const [age, setAge] = useState<number>(22);
   const [gender, setGender] = useState('Female');
   const [location, setLocation] = useState('Lahore, Punjab');
+  const [city, setCity] = useState('Lahore, Punjab');
   const [photoUrl, setPhotoUrl] = useState('https://images.unsplash.com/photo-1573496359142-b8d87734a5a2?auto=format&fit=crop&q=80&w=400');
   const [rate, setRate] = useState<number>(2000);
   const [about, setAbout] = useState('');
   const [selectedServices, setSelectedServices] = useState<string[]>(["Call Companionship"]);
 
-  const [activeTab, setActiveTab] = useState<'users' | 'bookings' | 'companions' | 'add_companion'>('users');
+  const [activeTab, setActiveTab] = useState<'users' | 'bookings' | 'companions' | 'add_companion' | 'pricing'>('users');
   const [submitting, setSubmitting] = useState(false);
+
+  // Local Pricing Editing State
+  const [localPricing, setLocalPricing] = useState<Record<string, ServicePriceRule>>(() => servicesPricing);
+
+  useEffect(() => {
+    if (servicesPricing) {
+      setLocalPricing(servicesPricing);
+    }
+  }, [servicesPricing]);
+
+  const handlePriceFieldChange = (serviceName: string, field: keyof ServicePriceRule, value: any) => {
+    setLocalPricing(prev => ({
+      ...prev,
+      [serviceName]: {
+        ...prev[serviceName],
+        [field]: value
+      }
+    }));
+  };
+
+  const handleSavePricing = (e: React.FormEvent) => {
+    e.preventDefault();
+    onUpdateServicesPricing(localPricing);
+    alert("Services pricing updated successfully! These rates will be applied globally to user package calculation displays.");
+  };
+
+  const isOwner = profile?.email?.toLowerCase() === 'komailjutt884@gmail.com' || profile?.email?.toLowerCase() === 'demo@yaarana.pk';
 
   // Available companion services
   const SERVICE_OPTIONS = [
@@ -60,6 +98,10 @@ export default function AdminPanel({
 
   const handleSubmitCompanion = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isOwner) {
+      alert("Access Denied: Only the owner (komailjutt884@gmail.com) can add companions.");
+      return;
+    }
     if (!name.trim() || !about.trim()) {
       alert("Please fill all required fields");
       return;
@@ -71,6 +113,7 @@ export default function AdminPanel({
         age,
         gender,
         location,
+        city,
         photoUrl,
         rate,
         services: selectedServices,
@@ -84,6 +127,8 @@ export default function AdminPanel({
       setName('');
       setAbout('');
       setSelectedServices(["Call Companionship"]);
+      setCity('Lahore, Punjab');
+      setLocation('Lahore, Punjab');
       setActiveTab('companions');
     } catch (err) {
       console.error(err);
@@ -169,11 +214,12 @@ export default function AdminPanel({
 
         <button
           onClick={() => setActiveTab('companions')}
-          className={`px-5 py-3 font-extrabold text-xs tracking-wider uppercase border-b-2 transition-all shrink-0 ${
+          className={`px-5 py-3 font-extrabold text-xs tracking-wider uppercase border-b-2 transition-all shrink-0 flex items-center gap-1 ${
             activeTab === 'companions' ? 'border-brand text-brand' : 'border-transparent text-gray-500 hover:text-gray-700'
           }`}
         >
-          Manage Companions ({companions.length})
+          <span>Manage Companions ({companions.length})</span>
+          {!isOwner && <span className="text-[10px]" title="Owner-only Restricted">🔒</span>}
         </button>
 
         <button
@@ -184,6 +230,17 @@ export default function AdminPanel({
         >
           <Plus className="w-4 h-4" />
           <span>Add Companion</span>
+          {!isOwner && <span className="text-[10px]" title="Owner-only Restricted">🔒</span>}
+        </button>
+
+        <button
+          onClick={() => setActiveTab('pricing')}
+          className={`px-5 py-3 font-extrabold text-xs tracking-wider uppercase border-b-2 transition-all shrink-0 flex items-center gap-1.5 ${
+            activeTab === 'pricing' ? 'border-brand text-brand' : 'border-transparent text-gray-500 hover:text-gray-700'
+          }`}
+        >
+          <Settings className="w-4 h-4" />
+          <span>Manage Pricing</span>
         </button>
       </div>
 
@@ -319,9 +376,25 @@ export default function AdminPanel({
       {/* TAB CONTENT: 3. MANAGE COMPANIONS */}
       {activeTab === 'companions' && (
         <div className="bg-white rounded-[24px] p-6 border border-gray-100 shadow-sm space-y-6">
-          <div className="border-b border-gray-100 pb-3">
-            <h3 className="font-extrabold text-lg text-gray-900 font-display">Manually Added Companions</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Review, verify, or remove the active partner database profiles.</p>
+          <div className="border-b border-gray-100 pb-3 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            <div>
+              <h3 className="font-extrabold text-lg text-gray-900 font-display">Manually Added Companions</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Review, verify, or remove the active partner database profiles.</p>
+            </div>
+            {isOwner && companions.length > 0 && (
+              <button
+                onClick={async () => {
+                  if (confirm("⚠️ WARNING: Are you absolutely sure you want to delete ALL companion profiles from the database? This will clear everything so you can add them manually again.")) {
+                    await onClearAllCompanions();
+                    alert("Successfully cleared all companions from the database.");
+                  }
+                }}
+                className="px-4 py-2 bg-rose-50 hover:bg-rose-100 text-brand font-black rounded-xl border border-brand/15 text-[10px] uppercase tracking-wider transition-all active:scale-95 flex items-center gap-1.5"
+              >
+                <Trash2 className="w-3.5 h-3.5" />
+                <span>Remove All Companions</span>
+              </button>
+            )}
           </div>
 
           {companions.length === 0 ? (
@@ -341,7 +414,13 @@ export default function AdminPanel({
                     <div>
                       <h4 className="font-extrabold text-gray-950 text-sm font-display">{comp.name}, <span className="font-normal text-gray-500">{comp.age} yrs</span></h4>
                       <div className="flex items-center gap-2 text-gray-400 mt-0.5 font-medium">
-                        <span className="flex items-center gap-0.5"><MapPin className="w-3 h-3 text-brand" />{comp.location}</span>
+                        <span className="flex items-center gap-0.5" title={`${comp.city || comp.location} - ${comp.location}`}>
+                          <MapPin className="w-3 h-3 text-brand" />
+                          {comp.city || comp.location}
+                          {comp.location && comp.location !== comp.city && (
+                            <span className="text-gray-400 font-normal"> ({comp.location})</span>
+                          )}
+                        </span>
                         <span>•</span>
                         <span className="text-brand font-extrabold">Rs. {comp.rate.toLocaleString()}/hr</span>
                       </div>
@@ -352,17 +431,23 @@ export default function AdminPanel({
                     <span className="bg-emerald-50 text-emerald-700 border border-emerald-100/50 px-2.5 py-0.5 rounded font-extrabold uppercase text-[9px] tracking-wide">
                       {comp.availability}
                     </span>
-                    <button
-                      onClick={() => {
-                        if(confirm(`Are you sure you want to delete ${comp.name} from the platform?`)) {
-                          onDeleteCompanion(comp.id);
-                        }
-                      }}
-                      className="p-2 bg-rose-50 hover:bg-brand/10 text-brand rounded-xl border border-brand/10 transition-all"
-                      title="Delete Companion"
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    {isOwner ? (
+                      <button
+                        onClick={() => {
+                          if(confirm(`Are you sure you want to delete ${comp.name} from the platform?`)) {
+                            onDeleteCompanion(comp.id);
+                          }
+                        }}
+                        className="p-2 bg-rose-50 hover:bg-brand/10 text-brand rounded-xl border border-brand/10 transition-all"
+                        title="Delete Companion"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    ) : (
+                      <span className="text-[10px] font-bold text-gray-400 bg-gray-50 border border-gray-100/50 px-2.5 py-1.5 rounded-lg flex items-center gap-1">
+                        🔒 Locked
+                      </span>
+                    )}
                   </div>
                 </div>
               ))}
@@ -373,135 +458,248 @@ export default function AdminPanel({
 
       {/* TAB CONTENT: 4. ADD COMPANION FORM */}
       {activeTab === 'add_companion' && (
-        <div className="bg-white rounded-[24px] p-6 md:p-8 border border-gray-100 shadow-sm space-y-6">
+        !isOwner ? (
+          <div className="bg-white rounded-[24px] p-12 border border-gray-100 shadow-sm text-center space-y-4">
+            <div className="w-16 h-16 bg-amber-50 rounded-full flex items-center justify-center mx-auto text-amber-500">
+              <ShieldAlert className="w-8 h-8" />
+            </div>
+            <h3 className="text-xl font-black text-gray-900 font-display">Owner Access Only</h3>
+            <p className="text-xs text-gray-500 max-w-md mx-auto leading-relaxed">
+              The registration of new companion profiles is restricted strictly to the primary owner account (<strong>komailjutt884@gmail.com</strong>).
+            </p>
+          </div>
+        ) : (
+          <div className="bg-white rounded-[24px] p-6 md:p-8 border border-gray-100 shadow-sm space-y-6">
+            <div className="border-b border-gray-100 pb-3">
+              <h3 className="font-extrabold text-lg text-gray-900 font-display">Register New Companion Profile</h3>
+              <p className="text-xs text-gray-400 mt-0.5">Manually input certified companions into the Yaarana.pk database.</p>
+            </div>
+
+            <form onSubmit={handleSubmitCompanion} className="space-y-6 text-xs font-semibold text-gray-600">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Full Name</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Alizeh Shah"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 outline-none text-gray-700 focus:bg-white focus:border-brand/40"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Age</label>
+                  <input
+                    type="number"
+                    required
+                    min={18}
+                    max={60}
+                    value={age}
+                    onChange={(e) => setAge(parseInt(e.target.value) || 22)}
+                    className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 outline-none text-gray-700 focus:bg-white focus:border-brand/40"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Gender</label>
+                  <select
+                    value={gender}
+                    onChange={(e) => setGender(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 outline-none text-gray-700 focus:bg-white focus:border-brand/40 cursor-pointer"
+                  >
+                    <option value="Female">Female</option>
+                    <option value="Male">Male</option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">City (Dropdown)</label>
+                  <select
+                    value={city}
+                    onChange={(e) => {
+                      setCity(e.target.value);
+                      setLocation(e.target.value);
+                    }}
+                    className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 outline-none text-gray-700 focus:bg-white focus:border-brand/40 cursor-pointer"
+                  >
+                    {PAKISTAN_CITIES.map((c) => (
+                      <option key={c} value={c}>{c}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Location Detail (Area/Neighborhood)</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="e.g. Gulberg III, Lahore"
+                    value={location}
+                    onChange={(e) => setLocation(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 outline-none text-gray-700 focus:bg-white focus:border-brand/40"
+                  />
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Profile Photo URL</label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="Paste direct Unsplash/image link..."
+                    value={photoUrl}
+                    onChange={(e) => setPhotoUrl(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 outline-none text-gray-700 focus:bg-white focus:border-brand/40"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Rate (PKR / Hour)</label>
+                  <input
+                    type="number"
+                    required
+                    min={100}
+                    value={rate}
+                    onChange={(e) => setRate(parseInt(e.target.value) || 2000)}
+                    className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 outline-none text-gray-700 focus:bg-white focus:border-brand/40"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Supported Services / Activities (Select multiple)</label>
+                <div className="flex flex-wrap gap-2">
+                  {SERVICE_OPTIONS.map((srv, idx) => {
+                    const isChecked = selectedServices.includes(srv);
+                    return (
+                      <button
+                        type="button"
+                        key={idx}
+                        onClick={() => handleServiceToggle(srv)}
+                        className={`px-3 py-2.5 rounded-xl border font-bold transition-all ${
+                          isChecked 
+                          ? 'bg-active-bg border-brand/40 text-brand shadow-sm' 
+                          : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
+                        }`}
+                      >
+                        {srv}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              <div>
+                <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Companion Bio / About</label>
+                <textarea
+                  required
+                  rows={3}
+                  placeholder="Write a sweet, inviting description..."
+                  value={about}
+                  onChange={(e) => setAbout(e.target.value)}
+                  className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 outline-none text-gray-700 focus:bg-white focus:border-brand/40"
+                />
+              </div>
+
+              <button
+                type="submit"
+                disabled={submitting}
+                className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold rounded-2xl shadow-md transition-all flex items-center justify-center gap-1.5"
+              >
+                <Check className="w-4 h-4" />
+                <span>{submitting ? "Registering..." : "Add Partner Profile"}</span>
+              </button>
+            </form>
+          </div>
+        )
+      )}
+
+      {activeTab === 'pricing' && (
+        <div className="bg-white rounded-[24px] p-6 md:p-8 border border-gray-100 shadow-sm space-y-6 animate-in fade-in duration-200">
           <div className="border-b border-gray-100 pb-3">
-            <h3 className="font-extrabold text-lg text-gray-900 font-display">Register New Companion Profile</h3>
-            <p className="text-xs text-gray-400 mt-0.5">Manually input certified companions into the Yaarana.pk database.</p>
+            <h3 className="font-extrabold text-lg text-gray-900 font-display">Manage Services & Pricing Setup</h3>
+            <p className="text-xs text-gray-400 mt-0.5">Configure packages, base fees, and extra hour rates globally for all services.</p>
           </div>
 
-          <form onSubmit={handleSubmitCompanion} className="space-y-6 text-xs font-semibold text-gray-600">
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Full Name</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Alizeh Shah"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 outline-none text-gray-700 focus:bg-white focus:border-brand/40"
-                />
-              </div>
+          <form onSubmit={handleSavePricing} className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {localPricing && Object.keys(localPricing).map((serviceName) => {
+                const rule = localPricing[serviceName];
+                if (!rule) return null;
+                return (
+                  <div key={serviceName} className="p-5 rounded-2xl border border-gray-100 bg-gray-50/40 space-y-4">
+                    <div className="flex items-center gap-2 border-b border-gray-100 pb-2">
+                      <Tag className="w-4 h-4 text-brand" />
+                      <h4 className="font-extrabold text-gray-900 text-sm font-display">{serviceName}</h4>
+                    </div>
 
-              <div>
-                <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Age</label>
-                <input
-                  type="number"
-                  required
-                  min={18}
-                  max={60}
-                  value={age}
-                  onChange={(e) => setAge(parseInt(e.target.value) || 22)}
-                  className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 outline-none text-gray-700 focus:bg-white focus:border-brand/40"
-                />
-              </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-xs font-semibold text-gray-600">
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1">Base Price (PKR)</label>
+                        <input
+                          type="number"
+                          required
+                          min={0}
+                          value={rule.basePrice}
+                          onChange={(e) => handlePriceFieldChange(serviceName, 'basePrice', parseInt(e.target.value) || 0)}
+                          className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 outline-none text-gray-750 focus:border-brand/40"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1">Base Hours</label>
+                        <input
+                          type="number"
+                          required
+                          min={1}
+                          value={rule.baseHours}
+                          onChange={(e) => handlePriceFieldChange(serviceName, 'baseHours', parseInt(e.target.value) || 1)}
+                          className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 outline-none text-gray-755 focus:border-brand/40"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1">Extra Hour (PKR)</label>
+                        <input
+                          type="number"
+                          required
+                          min={0}
+                          value={rule.extraHourPrice}
+                          onChange={(e) => handlePriceFieldChange(serviceName, 'extraHourPrice', parseInt(e.target.value) || 0)}
+                          className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 outline-none text-gray-755 focus:border-brand/40"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1">Description</label>
+                      <textarea
+                        required
+                        rows={2}
+                        value={rule.description}
+                        onChange={(e) => handlePriceFieldChange(serviceName, 'description', e.target.value)}
+                        className="w-full px-3 py-2 bg-white rounded-lg border border-gray-200 outline-none text-xs text-gray-700 focus:border-brand/40"
+                      />
+                    </div>
+                  </div>
+                );
+              })}
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Gender</label>
-                <select
-                  value={gender}
-                  onChange={(e) => setGender(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 outline-none text-gray-700 focus:bg-white focus:border-brand/40 cursor-pointer"
-                >
-                  <option value="Female">Female</option>
-                  <option value="Male">Male</option>
-                </select>
-              </div>
-
-              <div>
-                <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">City Location</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="e.g. Lahore, Punjab"
-                  value={location}
-                  onChange={(e) => setLocation(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 outline-none text-gray-700 focus:bg-white focus:border-brand/40"
-                />
-              </div>
+            <div className="flex justify-end pt-4">
+              <button
+                type="submit"
+                className="px-6 py-3.5 bg-brand hover:bg-brand-hover text-white font-extrabold rounded-2xl shadow-md transition-all flex items-center gap-2 text-xs"
+              >
+                <Save className="w-4 h-4" />
+                <span>Save Services Pricing Rules</span>
+              </button>
             </div>
-
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-              <div>
-                <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Profile Photo URL</label>
-                <input
-                  type="text"
-                  required
-                  placeholder="Paste direct Unsplash/image link..."
-                  value={photoUrl}
-                  onChange={(e) => setPhotoUrl(e.target.value)}
-                  className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 outline-none text-gray-700 focus:bg-white focus:border-brand/40"
-                />
-              </div>
-
-              <div>
-                <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Rate (PKR / Hour)</label>
-                <input
-                  type="number"
-                  required
-                  min={100}
-                  value={rate}
-                  onChange={(e) => setRate(parseInt(e.target.value) || 2000)}
-                  className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 outline-none text-gray-700 focus:bg-white focus:border-brand/40"
-                />
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Supported Services / Activities (Select multiple)</label>
-              <div className="flex flex-wrap gap-2">
-                {SERVICE_OPTIONS.map((srv, idx) => {
-                  const isChecked = selectedServices.includes(srv);
-                  return (
-                    <button
-                      type="button"
-                      key={idx}
-                      onClick={() => handleServiceToggle(srv)}
-                      className={`px-3 py-2.5 rounded-xl border font-bold transition-all ${
-                        isChecked 
-                        ? 'bg-active-bg border-brand/40 text-brand shadow-sm' 
-                        : 'bg-white border-gray-200 text-gray-600 hover:border-gray-300'
-                      }`}
-                    >
-                      {srv}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div>
-              <label className="block text-[10px] uppercase tracking-wider text-gray-400 mb-1.5">Companion Bio / About</label>
-              <textarea
-                required
-                rows={3}
-                placeholder="Write a sweet, inviting description..."
-                value={about}
-                onChange={(e) => setAbout(e.target.value)}
-                className="w-full px-4 py-2.5 bg-gray-50 rounded-xl border border-gray-100 outline-none text-gray-700 focus:bg-white focus:border-brand/40"
-              />
-            </div>
-
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full py-3.5 bg-slate-900 hover:bg-slate-800 text-white font-extrabold rounded-2xl shadow-md transition-all flex items-center justify-center gap-1.5"
-            >
-              <Check className="w-4 h-4" />
-              <span>{submitting ? "Registering..." : "Add Partner Profile"}</span>
-            </button>
           </form>
         </div>
       )}

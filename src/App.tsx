@@ -8,6 +8,7 @@ import AdminPanel from './components/AdminPanel';
 import { Heart, User, ShieldCheck, History, LogOut, Loader2, Sparkles, AlertCircle, RefreshCw } from 'lucide-react';
 import { SAMPLE_COMPANIONS } from './data/sampleCompanions';
 import { isSupabaseConfigured } from './supabase';
+import { getServicesPricing, saveServicesPricing, ServicePriceRule } from './data/services';
 
 // Import unified database operations
 import {
@@ -26,7 +27,9 @@ import {
   cancelBooking,
   approveBooking,
   rejectBooking,
-  seedCompanions
+  seedCompanions,
+  clearAllCompanions,
+  getCompanionsList
 } from './dbAdapter';
 
 export default function App() {
@@ -67,6 +70,16 @@ export default function App() {
   const [bookings, setBookings] = useState<Booking[]>([]);
   const [usersQueue, setUsersQueue] = useState<UserProfile[]>([]);
   const [selectedCompanion, setSelectedCompanion] = useState<Companion | null>(null);
+
+  // Dynamic Services Pricing State
+  const [servicesPricing, setServicesPricing] = useState<Record<string, ServicePriceRule>>(() => {
+    return getServicesPricing();
+  });
+
+  const handleUpdateServicesPricing = (newPricing: Record<string, ServicePriceRule>) => {
+    saveServicesPricing(newPricing);
+    setServicesPricing({ ...newPricing });
+  };
 
   // Dev state
   const [devBypassLoading, setDevBypassLoading] = useState(false);
@@ -321,6 +334,8 @@ export default function App() {
     }
     try {
       await addCompanion(isDemoMode, companionData);
+      const list = await getCompanionsList(isDemoMode);
+      setCompanions(list);
     } catch (err) {
       console.error("Add companion error:", err);
     }
@@ -334,8 +349,24 @@ export default function App() {
     }
     try {
       await deleteCompanion(isDemoMode, companionId);
+      const list = await getCompanionsList(isDemoMode);
+      setCompanions(list);
     } catch (err) {
       console.error("Delete companion error:", err);
+    }
+  };
+
+  const handleClearAllCompanions = async () => {
+    if (isDemoMode) {
+      saveDemoCompanions([]);
+      return;
+    }
+    try {
+      await clearAllCompanions(isDemoMode);
+      const list = await getCompanionsList(isDemoMode);
+      setCompanions(list);
+    } catch (err) {
+      console.error("Clear all companions error:", err);
     }
   };
 
@@ -409,6 +440,8 @@ export default function App() {
     }
     try {
       await seedCompanions(isDemoMode);
+      const list = await getCompanionsList(isDemoMode);
+      setCompanions(list);
       alert("Successfully seeded 5 detailed companion profiles!");
     } catch (err) {
       console.error("Seed error:", err);
@@ -720,6 +753,7 @@ export default function App() {
             onSelectCompanion={handleSelectCompanion}
             onSeedDemoCompanions={handleSeedDemoCompanions}
             isAdmin={profile?.role === 'admin'}
+            servicesPricing={servicesPricing}
           />
         )}
 
@@ -730,6 +764,7 @@ export default function App() {
             onNavigateToHistory={() => setActiveTab('history')}
             companions={companions}
             onSelectCompanionFromDropdown={(comp) => setSelectedCompanion(comp)}
+            servicesPricing={servicesPricing}
           />
         )}
 
@@ -744,9 +779,13 @@ export default function App() {
 
         {activeTab === 'admin' && profile?.role === 'admin' && (
           <AdminPanel
+            profile={profile}
             usersQueue={usersQueue}
             companions={companions}
             bookings={bookings}
+            servicesPricing={servicesPricing}
+            onUpdateServicesPricing={handleUpdateServicesPricing}
+            onClearAllCompanions={handleClearAllCompanions}
             onApproveUser={handleApproveUser}
             onRejectUser={handleRejectUser}
             onAddCompanion={handleAddCompanion}

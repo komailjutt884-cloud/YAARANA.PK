@@ -1,33 +1,26 @@
 import React, { useState } from 'react';
 import { Companion } from '../types';
-import { Search, Heart, MapPin, Star, Sparkles, Filter, SlidersHorizontal, X } from 'lucide-react';
+import { Search, Heart, MapPin, Star, Sparkles, Filter, SlidersHorizontal, X, HelpCircle, AlertCircle } from 'lucide-react';
+import { SERVICES_PRICING, ALL_SERVICES, ServicePriceRule } from '../data/services';
 
 interface BrowseCompanionsProps {
   companions: Companion[];
   onSelectCompanion: (companion: Companion) => void;
   onSeedDemoCompanions?: () => void;
   isAdmin: boolean;
+  servicesPricing: Record<string, ServicePriceRule>;
 }
 
-export default function BrowseCompanions({ companions, onSelectCompanion, onSeedDemoCompanions, isAdmin }: BrowseCompanionsProps) {
+export default function BrowseCompanions({ companions, onSelectCompanion, onSeedDemoCompanions, isAdmin, servicesPricing }: BrowseCompanionsProps) {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedGender, setSelectedGender] = useState<string>('All');
   const [selectedService, setSelectedService] = useState<string>('All');
   const [selectedCompanionForModal, setSelectedCompanionForModal] = useState<Companion | null>(null);
 
-  // List of all Pakistani companion services
-  const ALL_SERVICES = [
-    "Dining Out",
-    "Movies & Cinema",
-    "Call Companionship",
-    "Scenic Travel",
-    "Spending a Day Together",
-    "Spending a Night Together"
-  ];
-
   const filteredCompanions = companions.filter(comp => {
     const matchesSearch = comp.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-                          comp.location.toLowerCase().includes(searchTerm.toLowerCase());
+                          comp.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
+                          (comp.city && comp.city.toLowerCase().includes(searchTerm.toLowerCase()));
     const matchesGender = selectedGender === 'All' || comp.gender === selectedGender;
     const matchesService = selectedService === 'All' || comp.services.includes(selectedService);
     return matchesSearch && matchesGender && matchesService;
@@ -151,7 +144,7 @@ export default function BrowseCompanions({ companions, onSelectCompanion, onSeed
                 {/* Location overlay badge */}
                 <div className="absolute bottom-3 left-3 bg-black/40 backdrop-blur-sm px-2.5 py-1 rounded-lg text-white font-bold text-[10px] flex items-center gap-1">
                   <MapPin className="w-3 h-3 text-brand" />
-                  <span>{comp.location.split(',')[0]}</span>
+                  <span>{(comp.city || comp.location).split(',')[0]}</span>
                 </div>
               </div>
 
@@ -241,7 +234,13 @@ export default function BrowseCompanions({ companions, onSelectCompanion, onSeed
                   {selectedCompanionForModal.name}, <span className="font-light text-rose-200">{selectedCompanionForModal.age}</span>
                 </h2>
                 <div className="flex items-center gap-4 text-xs text-rose-100 mt-1">
-                  <span className="flex items-center gap-1"><MapPin className="w-3.5 h-3.5 text-brand" />{selectedCompanionForModal.location}</span>
+                  <span className="flex items-center gap-1">
+                    <MapPin className="w-3.5 h-3.5 text-brand" />
+                    {selectedCompanionForModal.city || selectedCompanionForModal.location}
+                    {selectedCompanionForModal.location && selectedCompanionForModal.location !== selectedCompanionForModal.city && (
+                      <span className="text-rose-200"> • {selectedCompanionForModal.location}</span>
+                    )}
+                  </span>
                   <span className="flex items-center gap-1 font-bold text-accent"><span className="text-accent text-sm">★</span>{selectedCompanionForModal.rating} ({selectedCompanionForModal.reviewsCount} reviews)</span>
                 </div>
               </div>
@@ -256,23 +255,46 @@ export default function BrowseCompanions({ companions, onSelectCompanion, onSeed
                 </p>
               </div>
 
-              <div className="space-y-2">
-                <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Companionship Pricing</h4>
-                <div className="flex justify-between items-center bg-gray-50 p-4 rounded-[18px] border border-gray-100">
-                  <span className="text-xs font-bold text-gray-500">Hourly Direct Booking Fee</span>
-                  <span className="text-lg font-black text-brand">Rs. {selectedCompanionForModal.rate.toLocaleString()} / Hour</span>
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <h4 className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Available Activities & Services</h4>
-                <div className="grid grid-cols-2 gap-2">
-                  {selectedCompanionForModal.services.map((srv, idx) => (
-                    <div key={idx} className="flex items-center gap-2 bg-active-bg/30 px-3 py-2.5 rounded-xl border border-brand/5">
-                      <span className="w-1.5 h-1.5 bg-brand rounded-full shrink-0" />
-                      <span className="text-xs font-extrabold text-gray-700">{srv}</span>
-                    </div>
-                  ))}
+              <div className="space-y-3">
+                <h4 className="text-[10px] font-black uppercase tracking-wider text-gray-400">Official Companionship Services & Pricing Menu</h4>
+                <div className="space-y-2 max-h-64 overflow-y-auto pr-1">
+                  {ALL_SERVICES.map((serviceName) => {
+                    const pricing = (servicesPricing && servicesPricing[serviceName]) || SERVICES_PRICING[serviceName];
+                    const isSupported = selectedCompanionForModal.services.includes(serviceName);
+                    if (!pricing) return null;
+                    return (
+                      <div
+                        key={serviceName}
+                        className={`p-3 rounded-2xl border transition-all flex flex-col justify-between gap-2 ${
+                          isSupported
+                            ? 'bg-active-bg/35 border-brand/20 shadow-sm'
+                            : 'bg-gray-50/50 border-gray-100/60 opacity-60'
+                        }`}
+                      >
+                        <div className="flex justify-between items-start">
+                          <div className="space-y-0.5">
+                            <span className="text-xs font-black text-gray-900 flex items-center gap-1.5">
+                              {serviceName}
+                              {isSupported ? (
+                                <span className="text-[8px] bg-emerald-500 text-white px-2 py-0.5 rounded-full uppercase tracking-wider font-black">Active & Ready</span>
+                              ) : (
+                                <span className="text-[8px] bg-gray-200 text-gray-500 px-2 py-0.5 rounded-full uppercase tracking-wider font-black">Not Offered</span>
+                              )}
+                            </span>
+                            <p className="text-[10px] text-gray-400 font-semibold leading-relaxed">{pricing.description}</p>
+                          </div>
+                          <div className="text-right shrink-0">
+                            <p className="text-xs font-black text-brand">Rs. {pricing.basePrice.toLocaleString()}</p>
+                            <p className="text-[9px] text-gray-400 font-bold">For first {pricing.baseHours} hrs</p>
+                          </div>
+                        </div>
+                        <div className="flex justify-between items-center text-[10px] border-t border-dashed border-gray-200 pt-2">
+                          <span className="text-gray-400 font-extrabold uppercase tracking-wider text-[8px]">Extra Hour Charge</span>
+                          <span className="font-extrabold text-brand">Rs. {pricing.extraHourPrice.toLocaleString()} / Hour</span>
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
               </div>
             </div>

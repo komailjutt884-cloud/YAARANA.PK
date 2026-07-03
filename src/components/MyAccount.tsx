@@ -33,9 +33,9 @@ export default function MyAccount({ profile, bookings, onCancelBooking, onLogout
         );
       default:
         return (
-          <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-amber-750 bg-amber-50 px-3 py-1 rounded-full border border-amber-100 animate-pulse">
+          <span className="flex items-center gap-1.5 text-[10px] font-black uppercase tracking-wider text-amber-700 bg-amber-50 px-3 py-1 rounded-full border border-amber-200 animate-pulse">
             <Clock className="w-3.5 h-3.5 text-amber-600" />
-            <span>Verifying</span>
+            <span>Pending</span>
           </span>
         );
     }

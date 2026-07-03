@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { Companion, Booking } from '../types';
-import { CreditCard, Calendar, Clock, DollarSign, ArrowRight, ShieldCheck, CheckCircle2, Loader2, PhoneCall } from 'lucide-react';
+import { CreditCard, Calendar, Clock, DollarSign, ArrowRight, ShieldCheck, CheckCircle2, Loader2, PhoneCall, Tag } from 'lucide-react';
+import { SERVICES_PRICING, calculateBookingPrice, ServicePriceRule } from '../data/services';
 
 interface BookingPageProps {
   selectedCompanion: Companion | null;
@@ -8,6 +9,7 @@ interface BookingPageProps {
   onNavigateToHistory: () => void;
   companions: Companion[];
   onSelectCompanionFromDropdown: (companion: Companion) => void;
+  servicesPricing: Record<string, ServicePriceRule>;
 }
 
 export default function BookingPage({
@@ -15,7 +17,8 @@ export default function BookingPage({
   onBookingSubmit,
   onNavigateToHistory,
   companions,
-  onSelectCompanionFromDropdown
+  onSelectCompanionFromDropdown,
+  servicesPricing
 }: BookingPageProps) {
   // Booking Form State
   const [selectedCompId, setSelectedCompId] = useState(selectedCompanion?.id || '');
@@ -60,7 +63,15 @@ export default function BookingPage({
     }
   };
 
-  const totalAmount = activeCompanion ? activeCompanion.rate * duration : 0;
+  const handleActivitySelect = (srv: string) => {
+    setActivity(srv);
+    const pricing = (servicesPricing && servicesPricing[srv]) || SERVICES_PRICING[srv];
+    if (pricing) {
+      setDuration(pricing.baseHours);
+    }
+  };
+
+  const totalAmount = calculateBookingPrice(activity, duration, servicesPricing);
 
   // Real-time verification simulation
   useEffect(() => {
@@ -271,7 +282,7 @@ export default function BookingPage({
                     <button
                       type="button"
                       key={idx}
-                      onClick={() => setActivity(srv)}
+                      onClick={() => handleActivitySelect(srv)}
                       className={`px-3 py-3.5 rounded-2xl border-2 font-extrabold text-xs text-left transition-all ${
                         activity === srv 
                         ? 'border-brand bg-active-bg text-brand shadow-sm' 
@@ -282,6 +293,26 @@ export default function BookingPage({
                     </button>
                   ))}
                 </div>
+
+                {/* Dynamic rate pop-up indicator */}
+                {((servicesPricing && servicesPricing[activity]) || SERVICES_PRICING[activity]) && (() => {
+                  const pricing = (servicesPricing && servicesPricing[activity]) || SERVICES_PRICING[activity];
+                  return (
+                    <div className="mt-3 bg-brand/5 border border-brand/10 p-4 rounded-2xl flex items-start gap-3 text-xs text-gray-700 animate-in fade-in slide-in-from-top-2 duration-300">
+                      <div className="p-1 bg-white rounded-lg text-brand font-black shrink-0 shadow-sm text-[10px] px-2">
+                        Rate Pop-Up
+                      </div>
+                      <div className="space-y-1">
+                        <p className="font-extrabold text-brand">
+                          {activity}: Rs. {pricing.basePrice.toLocaleString()} (for {pricing.baseHours} Hours Package)
+                        </p>
+                        <p className="text-[10px] text-gray-500 font-semibold">
+                          Extra hour charge: Rs. {pricing.extraHourPrice.toLocaleString()} / hour. You can increase duration below.
+                        </p>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
 
               {/* Time & Date Settings */}
@@ -308,10 +339,13 @@ export default function BookingPage({
                     <input
                       type="number"
                       required
-                      min="1"
+                      min={((servicesPricing && servicesPricing[activity]) || SERVICES_PRICING[activity])?.baseHours || 1}
                       max="24"
                       value={duration}
-                      onChange={(e) => setDuration(Math.max(1, parseInt(e.target.value) || 1))}
+                      onChange={(e) => {
+                        const minHrs = ((servicesPricing && servicesPricing[activity]) || SERVICES_PRICING[activity])?.baseHours || 1;
+                        setDuration(Math.max(minHrs, parseInt(e.target.value) || minHrs));
+                      }}
                       className="w-full pl-10 pr-3 py-3 bg-gray-50 rounded-2xl border border-gray-100 text-xs font-bold text-gray-700 outline-none focus:border-brand/40"
                     />
                   </div>
@@ -418,7 +452,7 @@ export default function BookingPage({
               />
               <div className="space-y-1">
                 <h4 className="font-black text-gray-950 text-md font-display">{activeCompanion.name}</h4>
-                <p className="text-xs text-gray-400 font-medium">Age: {activeCompanion.age} | {activeCompanion.gender}</p>
+                <p className="text-xs text-gray-400 font-medium">Age: {activeCompanion.age} | {activeCompanion.gender} | {activeCompanion.city || activeCompanion.location}</p>
                 <div className="flex items-center gap-1 text-xs text-brand font-extrabold">
                   <span className="text-accent text-xs">★</span>
                   <span>{activeCompanion.rating}</span>
@@ -432,18 +466,47 @@ export default function BookingPage({
 
             {/* Calculations */}
             <div className="space-y-3">
-              <div className="flex justify-between text-xs text-gray-500">
-                <span>Companionship rate:</span>
-                <span className="font-extrabold text-gray-750">Rs. {activeCompanion.rate.toLocaleString()} / Hour</span>
-              </div>
-              <div className="flex justify-between text-xs text-gray-500">
-                <span>Selected hours:</span>
-                <span className="font-extrabold text-gray-750">{duration} Hours</span>
-              </div>
-              <div className="flex justify-between text-xs text-gray-500">
-                <span>Subtotal:</span>
-                <span className="font-extrabold text-gray-750">Rs. {(activeCompanion.rate * duration).toLocaleString()}</span>
-              </div>
+              {SERVICES_PRICING[activity] ? (
+                <>
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Base Package ({activity}):</span>
+                    <span className="font-extrabold text-gray-750">Rs. {SERVICES_PRICING[activity].basePrice.toLocaleString()}</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Included Package Hours:</span>
+                    <span className="font-extrabold text-gray-750">{SERVICES_PRICING[activity].baseHours} Hours</span>
+                  </div>
+                  {duration > SERVICES_PRICING[activity].baseHours && (
+                    <div className="flex justify-between text-xs text-gray-500">
+                      <span>Extra Hours ({duration - SERVICES_PRICING[activity].baseHours} hrs):</span>
+                      <span className="font-extrabold text-gray-750">Rs. {((duration - SERVICES_PRICING[activity].baseHours) * SERVICES_PRICING[activity].extraHourPrice).toLocaleString()}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Total Duration:</span>
+                    <span className="font-extrabold text-gray-750">{duration} Hours</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Subtotal:</span>
+                    <span className="font-extrabold text-brand font-mono">Rs. {totalAmount.toLocaleString()}</span>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Base Companion Rate:</span>
+                    <span className="font-extrabold text-gray-750">Rs. {activeCompanion.rate.toLocaleString()} / Hour</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Selected hours:</span>
+                    <span className="font-extrabold text-gray-750">{duration} Hours</span>
+                  </div>
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>Subtotal:</span>
+                    <span className="font-extrabold text-gray-750">Rs. {totalAmount.toLocaleString()}</span>
+                  </div>
+                </>
+              )}
               <div className="flex justify-between text-xs text-gray-500">
                 <span>Taxes & Gateway fee:</span>
                 <span className="font-extrabold text-emerald-500 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-100/30">Rs. 0 (Free)</span>
